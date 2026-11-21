@@ -1,0 +1,107 @@
+/* ============================================================
+   校园一体机适配：保留官方 UI，只放大触控目标与正文
+   ============================================================ */
+
+body.campus {
+  --ds-font-size-m: 15px;
+  --ds-control-height-xl: 44px;
+  --ds-control-height-l: 40px;
+  --ds-control-height-m: 36px;
+  --ds-control-height-s: 32px;
+
+  --dsw-font-markdown-base: 15.5px/1.9 var(--dsw-font-family);
+  --dsw-font-markdown-base-strong: 600 15.5px/1.9 var(--dsw-font-family);
+  --dsw-font-markdown-small: 13.5px/1.8 var(--dsw-font-family);
+  --dsw-font-markdown-small-strong: 600 13.5px/1.8 var(--dsw-font-family);
+  --dsw-font-markdown-h1: 600 23px/1.4 var(--dsw-font-family);
+  --dsw-font-markdown-h2: 600 20px/1.5 var(--dsw-font-family);
+  --dsw-font-markdown-h3: 600 18px/1.6 var(--dsw-font-family);
+  --dsw-font-markdown-h4: 600 16px/1.7 var(--dsw-font-family);
+}
+
+body.campus button {
+  touch-action: manipulation;
+}
+
+body.campus textarea {
+  font-size: 16px;
+}
+
+body.campus input {
+  font-size: 15px;
+}
+
+/* 设置弹窗需要盖在快捷面板和放映弹窗之上 */
+body.campus [class*='overlay-'] {
+  z-index: 1500;
+}
+
+/* 下拉菜单通过 portal 挂到 body，必须高于上面的遮罩，否则选项点不到 */
+body.campus [role='listbox'] {
+  z-index: 1600;
+}
+
+@media (hover: none) {
+  body.campus [class*='actions-'] {
+    opacity: 1 !important;
+  }
+}
+
+@media (pointer: coarse) {
+  body.campus {
+    --ds-font-size-m: 16px;
+    --ds-control-height-xl: 52px;
+    --ds-control-height-l: 46px;
+    --ds-control-height-m: 42px;
+    --ds-control-height-s: 38px;
+
+    --dsw-font-markdown-base: 17px/2 var(--dsw-font-family);
+    --dsw-font-markdown-base-strong: 600 17px/2 var(--dsw-font-family);
+    --dsw-font-markdown-small: 15px/1.85 var(--dsw-font-family);
+    --dsw-font-markdown-small-strong: 600 15px/1.85 var(--dsw-font-family);
+    --dsw-font-markdown-h1: 600 26px/1.4 var(--dsw-font-family);
+    --dsw-font-markdown-h2: 600 22px/1.5 var(--dsw-font-family);
+    --dsw-font-markdown-h3: 600 19px/1.6 var(--dsw-font-family);
+    --dsw-font-markdown-h4: 600 17px/1.7 var(--dsw-font-family);
+  }
+
+  body.campus textarea {
+    font-size: 18px !important;
+    line-height: 1.6 !important;
+  }
+
+  body.campus input {
+    font-size: 17px !important;
+  }
+
+  body.campus [class*='sendButton'] {
+    width: 50px;
+    height: 50px;
+  }
+
+  body.campus [class*='newChat'] {
+    min-height: 46px;
+    font-size: 15px;
+  }
+
+  body.campus [class*='toggle'] {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  body.campus [class*='square'] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 1600px) {
+  body.campus {
+    --message-list-max-width: 1080px;
+    --message-list-padding-horizontal: 56px;
+  }
+
+  body.campus textarea {
+    font-size: 17px;
+  }
+}

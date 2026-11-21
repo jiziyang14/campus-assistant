@@ -1,0 +1,13 @@
+{
+  "name": "campus-assistant-packager",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@yao-pkg/pkg": "^6.25.0",
+    "postject": "^1.0.0-alpha.6",
+    "resedit": "^3.1.1"
+  }
+}

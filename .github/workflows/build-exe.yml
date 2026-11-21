@@ -1,0 +1,50 @@
+name: Build Windows exe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: campus-src/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: campus-src
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: campus-src
+        run: pnpm build
+
+      - name: Install packager dependencies
+        working-directory: campus-exe
+        run: npm ci
+
+      - name: Build exe without embedded API key
+        working-directory: campus-exe
+        run: node build.mjs
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-assistant-windows
+          path: campus-exe/out/校园助手.exe
+          if-no-files-found: error

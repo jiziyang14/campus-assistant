@@ -1,0 +1,50 @@
+# 依赖
+**/node_modules/
+**/.pnpm-store/
+
+# 构建产物（由源码重新生成，不入库）
+campus-src/dist/
+campus-src/build/
+campus-exe/out/
+campus-exe/release/
+campus-exe/bundle.cjs
+campus-edition/static/
+campus-edition/index.html
+campus-edition/favicon.ico
+campus-edition/favicon.svg
+campus-edition/apple-touch-icon.png
+campus-edition/version.json
+
+# 本地配置与密钥（只提交 config.example.json）
+campus-edition/config.json
+campus-edition/config.local.json
+**/config.local.json
+
+# 可执行文件与安装包
+*.exe
+*.msi
+
+# 本地备份、归档与日志
+_backup/
+_archive/
+_publish/
+*.log
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 私有品牌资源：同人 logo、图标与截图不随公开仓库分发
+campus-src/src/assets/logo*.svg
+campus-src/src/assets/logo*.png
+campus-src/src/assets/favicon.ico
+campus-src/src/assets/apple-touch-icon.png
+campus-exe/icon.ico
+campus-exe/icon-source.png
+campus-exe/icon-source.jpg
+docs/*.png
