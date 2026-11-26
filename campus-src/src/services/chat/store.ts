@@ -1,9 +1,16 @@
 import { create } from 'zustand'
+import { getAbortReason, throwIfAborted } from '../../utils/abort.js'
 import { createId } from '../../utils/id.js'
 import { ApiError, streamMessage } from '../api/client.js'
 import type { ChatModel, CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
-import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
+import {
+  cancelUpload,
+  checkImageFileIds,
+  describeUploadError,
+  uploadAttachment,
+  useUploads,
+} from '../attachments.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
@@ -441,6 +448,57 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
   }
 }
 
+export type MergeHistoryResult = { added: number; skipped: number; copied: number }
+
+/**
+ * 合并历史对话：保留现有记录，只把导入的会话追加进来。
+ * 同一会话两边都有改动时另存副本，附件换成本地新 ID，避免覆盖与串台。
+ */
+export const mergeHistory = async (write: () => Promise<void>): Promise<MergeHistoryResult> => {
+  if (get().importingHistory) {
+    throw new Error('History merge is already in progress')
+  }
+  set({ importingHistory: true })
+  try {
+    for (const controller of Object.values(get().streaming)) {
+      controller.abort()
+    }
+    await Promise.all(deletionTasks)
+    historyEpoch += 1
+    initTask = undefined
+    sessionLoads.clear()
+    await waitForIdle()
+    await db.clearStaging()
+    let result: MergeHistoryResult
+    try {
+      await write()
+      result = await db.mergeStaging()
+    } catch (error) {
+      await db.clearStaging().catch(db.reportStorageError('clear unfinished history merge'))
+      throw error
+    }
+    sessionAccess.clear()
+    unsavedSessions.clear()
+    pendingFiles.clear()
+    const summaries = await db.loadSessionSummaries()
+    set({
+      ready: true,
+      initError: false,
+      sessions: sortSessions(summaries),
+    })
+    return result
+  } finally {
+    set({ importingHistory: false })
+    retrySaveSessions()
+    const { activeId, ready } = get()
+    if (activeId !== null) {
+      void ensureSessionLoaded(activeId)
+    } else if (!ready) {
+      void initChat()
+    }
+  }
+}
+
 export const newChat = () => {
   if (!get().importingHistory) {
     set({ activeId: null })
@@ -455,6 +513,30 @@ export const selectSession = (id: string) => {
     void ensureSessionLoaded(id)
     trimSessionCache()
   }
+}
+
+/** 新建一个空会话并激活；标题固定时不会自动改名，适合颜值争霸赛这类固定入口。 */
+export const createSession = (title = ''): string | null => {
+  if (get().importingHistory || !get().ready) {
+    return null
+  }
+  const now = Date.now()
+  const session: Session = {
+    id: createId(),
+    title,
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+    rootMessageId: null,
+  }
+  touchSession(session.id)
+  set((state) => ({
+    sessions: [toSessionSummary(session), ...state.sessions],
+    sessionCache: { ...state.sessionCache, [session.id]: session },
+    activeId: session.id,
+  }))
+  void db.saveSession(session).catch(db.reportStorageError('create session'))
+  return session.id
 }
 
 export const renameSession = (id: string, title: string) => {
@@ -592,6 +674,8 @@ export const sendMessage = (targetSessionId: string | null) => {
     files: files.map(({ id, serverId, name, size, isImage, mimeType, ocrText }) => ({
       id,
       serverId,
+      // 草稿附件已上传成功，每张图片都在上传前检查过长边，超限的已缩小。
+      imageSizeChecked: isImage,
       name,
       size,
       isImage,
@@ -753,8 +837,11 @@ export const retryUpload = (sessionId: string, messageId: string) => {
 
 type Request = { history: Message[]; question: UserMessage; prefix?: AssistantMessage }
 
-/** 把补传得到的 serverId 写回会话里所有引用同一附件的消息（编辑、重新生成会共用附件） */
-const saveServerIds = (sessionId: string, serverIds: Map<string, string>) => {
+/**
+ * 将 serverId 写回所有引用同一附件的消息。传入 null 会清除超限旧图的 ID，触发补传。
+ * 尺寸标记随有效 ID 保存，因为本地保留的是原图，刷新后可以直接复用已检查的上传副本。
+ */
+const saveServerIds = (sessionId: string, serverIds: ReadonlyMap<string, string | null>) => {
   if (serverIds.size === 0) {
     return
   }
@@ -764,9 +851,12 @@ const saveServerIds = (sessionId: string, serverIds: Map<string, string>) => {
       message.role === 'user' && message.files.some((file) => serverIds.has(file.id))
         ? {
             ...message,
-            files: message.files.map((file) =>
-              serverIds.has(file.id) ? { ...file, serverId: serverIds.get(file.id) ?? null } : file
-            ),
+            files: message.files.map((file) => {
+              const serverId = serverIds.get(file.id)
+              return serverId === undefined
+                ? file
+                : { ...file, serverId, imageSizeChecked: file.isImage && serverId !== null }
+            }),
           }
         : message
     ),
@@ -824,12 +914,22 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   const serverIds = new Map<string, string>()
   // 停止生成立即生效；上传本身不取消（输入框与其他消息可能共用同一任务），完成后照常写回 serverId
   const aborted = new Promise<never>((_, reject) => {
-    signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    signal.addEventListener('abort', () => reject(getAbortReason(signal)), { once: true })
   })
+  // 旧图片超限时先清除 ID，交给下方已有的附件补传流程。
+  const files = [
+    ...request.question.files,
+    ...getContextRounds(request.history).flatMap(([user]) => user.files),
+  ]
+  const checked = await Promise.race([checkImageFileIds(files, signal), aborted])
+  if (checked.size > 0) {
+    saveServerIds(sessionId, checked)
+    request = refreshRequest(sessionId, request)
+  }
   const uploads = Promise.allSettled(
     request.question.files.map(async (file) => {
       const serverId = await ensureServerId(apiKey, file)
-      if (serverId) {
+      if (serverId && serverId !== file.serverId) {
         serverIds.set(file.id, serverId)
       }
     })
@@ -846,7 +946,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
   }
 
   const pending = new Map<string, FileAttachment>()
-  for (const [user] of getContextRounds(request.history).toReversed()) {
+  for (const [user] of getContextRounds(request.history).reverse()) {
     for (const file of user.files) {
       if (!file.serverId && !serverIds.has(file.id) && !pending.has(file.id)) {
         pending.set(file.id, file)
@@ -854,7 +954,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
     }
   }
   for (const file of pending.values()) {
-    signal.throwIfAborted()
+    throwIfAborted(signal)
     try {
       const serverId = await Promise.race([ensureServerId(apiKey, file), aborted])
       if (serverId) {
@@ -862,7 +962,7 @@ const prepareFiles = async (sessionId: string, request: Request, signal: AbortSi
         saveServerIds(sessionId, new Map([[file.id, serverId]]))
       }
     } catch {
-      signal.throwIfAborted()
+      throwIfAborted(signal)
     }
   }
 

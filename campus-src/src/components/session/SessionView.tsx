@@ -4,6 +4,7 @@ import { useTranslate } from '../../i18n/index.js'
 import type { Session } from '../../services/chat/types.js'
 import { ChatInput } from '../chatInput/ChatInput.js'
 import { MessageList } from '../messages/MessageList.js'
+import { BeautyWallBar } from '../campus/BeautyWall.js'
 import { MobileHeader } from './MobileHeader.js'
 import styles from './SessionView.module.css'
 
@@ -20,6 +21,7 @@ export const SessionView = ({
   const t = useTranslate()
   const isMobile = useIsMobile()
   const title = session.title || t('untitledChat')
+  const isBeauty = session.title === t('campusBeauty')
   return (
     <div className={styles.view}>
       {isMobile ? (
@@ -31,6 +33,7 @@ export const SessionView = ({
           </div>
         </div>
       )}
+      {isBeauty ? <BeautyWallBar session={session} /> : null}
       <MessageList
         session={session}
         streaming={streaming}

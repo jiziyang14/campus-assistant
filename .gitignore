@@ -45,6 +45,7 @@ campus-src/src/assets/logo*.png
 campus-src/src/assets/favicon.ico
 campus-src/src/assets/apple-touch-icon.png
 campus-exe/icon.ico
+campus-exe/icon-exe.ico
 campus-exe/icon-source.png
 campus-exe/icon-source.jpg
 docs/*.png

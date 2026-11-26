@@ -83,6 +83,70 @@
   margin-top: 8px;
 }
 
+/* 会话搜索：长列表里不必一路翻找 */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 38px;
+  margin-bottom: 2px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.searchRow:focus-within {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.searchClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.searchClear:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.emptySearch {
+  padding: 24px 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+
 .list {
   height: 100%;
   margin: 0 -2px;
@@ -275,5 +339,90 @@
     margin-left: 10px;
     font-size: 16px;
     line-height: 22px;
+  }
+}
+
+/* 大屏下加宽侧栏、放大列表与底部操作，站在讲台前也能看清 */
+@media (min-width: 1600px) {
+  .sider {
+    width: 300px;
+    padding: 8px 14px 0;
+  }
+
+  .brandName {
+    font-size: 16px;
+  }
+
+  .searchRow {
+    height: 44px;
+  }
+
+  .searchInput {
+    font-size: 14px;
+  }
+
+  .sectionHeader {
+    padding: 3px 10px;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .bottomNewChat {
+    min-height: 52px;
+    font-size: 15px;
+  }
+
+  .settings {
+    min-height: 48px;
+  }
+
+  .settingsLabel {
+    font-size: 15px;
+  }
+
+  .collapsedGroup {
+    height: 52px;
+    padding: 0 6px;
+  }
+}
+
+/* 触屏进一步放大点击热区 */
+@media (pointer: coarse) {
+  .searchRow {
+    height: 48px;
+    padding-right: 10px;
+  }
+
+  .searchInput {
+    font-size: 16px;
+  }
+
+  .searchClear {
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+  }
+
+  .bottomNewChat {
+    min-height: 54px;
+    font-size: 15px;
+  }
+
+  .settings {
+    min-height: 50px;
+  }
+
+  .settingsLabel {
+    font-size: 15px;
+  }
+
+  .collapseButton {
+    width: 48px;
+    height: 48px;
+  }
+
+  .collapsedGroup {
+    height: 54px;
+    padding: 0 6px;
   }
 }

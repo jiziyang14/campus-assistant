@@ -121,7 +121,8 @@
 }
 
 /* 文档放映卡片：内容居中，和右侧讲题主卡片保持同一视觉高度 */
-.deckIcon {
+.deckIcon,
+.cardIcon {
   display: grid;
   place-items: center;
   width: 38px;

@@ -6,7 +6,7 @@ import { openCampusPanel } from '../campus/campusPanelState.js'
 import { IconButton } from '../base/IconButton.js'
 import styles from './Sider.module.css'
 
-/** 收起后左上角的按钮组 */
+/** 收起后左下角的按钮组 */
 export const CollapsedSider = () => {
   const t = useTranslate()
   return (

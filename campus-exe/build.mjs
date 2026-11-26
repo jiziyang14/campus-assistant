@@ -136,7 +136,9 @@ process.stdout.write('写入图标与版本信息…\n')
 if (process.env.CAMPUS_SKIP_ICON !== '1') {
   const exe = ResEdit.NtExecutable.from(fs.readFileSync(APP), { ignoreCert: true })
   const resource = ResEdit.NtExecutableResource.from(exe)
-  const iconFile = ResEdit.Data.IconFile.from(fs.readFileSync(path.join(HERE, 'icon.ico')))
+  const iconFile = ResEdit.Data.IconFile.from(
+    fs.readFileSync(path.join(HERE, 'icon-exe.ico'))
+  )
   ResEdit.Resource.IconGroupEntry.replaceIconsForResource(
     resource.entries,
     1,

@@ -73,7 +73,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const togglesRef = useRef<HTMLDivElement>(null)
   const cameraOpen = useCameraDialog((state) => state.open)
   const cameraMode = useCameraDialog((state) => state.mode)
-  const [tableFile, setTableFile] = useState<File | null>(null)
+  const [tableFiles, setTableFiles] = useState<File[] | null>(null)
   // 切换会话会重建输入框，此时关闭还开着的相机
   useEffect(() => closeCameraDialog, [])
 
@@ -105,8 +105,8 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   }
 
   /** 表格提取失败时退回模型直接看图：图片作为附件，提示词要求还原表格 */
-  const useTableVision = (file: File) => {
-    const error = addDraftFiles(sessionId, [file], useSettings.getState().apiKey ?? '')
+  const useTableVision = (files: File[]) => {
+    const error = addDraftFiles(sessionId, files, useSettings.getState().apiKey ?? '')
     if (error) {
       showToast(error)
       return
@@ -340,25 +340,35 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       {dragging ? <DragMask /> : null}
       <CameraDialog
         open={cameraOpen}
+        preferred={cameraMode === 'beauty' ? 'selfie' : 'document'}
+        title={cameraMode === 'beauty' ? t('campusBeauty') : undefined}
+        allowUpload={cameraMode !== 'attach'}
         onClose={closeCameraDialog}
-        onCapture={(file) => {
+        onDone={(files) => {
           if (cameraMode === 'table') {
-            setTableFile(file)
+            // 已经拍过一轮时继续追加，避免覆盖上一批照片
+            setTableFiles((current) => [...(current ?? []), ...files])
             return
           }
-          const error = addDraftFiles(sessionId, [file], useSettings.getState().apiKey ?? '')
+          const error = addDraftFiles(sessionId, files, useSettings.getState().apiKey ?? '')
           if (error) {
             showToast(error)
+            return
+          }
+          if (cameraMode === 'beauty') {
+            setDraftText(sessionId, t('campusBeautyPrompt'))
           }
         }}
       />
-      {tableFile ? (
+      {tableFiles ? (
         <TableExtractDialog
-          file={tableFile}
-          onClose={() => setTableFile(null)}
+          files={tableFiles}
+          onClose={() => setTableFiles(null)}
+          onAddFiles={(files) => setTableFiles((current) => [...(current ?? []), ...files])}
+          onTakePhotos={() => openCameraDialog('table')}
           onUseVision={() => {
-            const current = tableFile
-            setTableFile(null)
+            const current = tableFiles
+            setTableFiles(null)
             useTableVision(current)
           }}
         />

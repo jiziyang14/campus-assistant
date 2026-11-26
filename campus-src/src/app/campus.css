@@ -93,6 +93,12 @@ body.campus [role='listbox'] {
     min-width: 44px;
     min-height: 44px;
   }
+
+  /* 收起状态底部的历史/新对话/快捷操作按钮，触屏也要够大 */
+  body.campus [class*='collapsedGroup'] button {
+    min-width: 48px;
+    min-height: 48px;
+  }
 }
 
 @media (min-width: 1600px) {

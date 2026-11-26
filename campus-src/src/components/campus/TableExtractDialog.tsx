@@ -15,6 +15,7 @@ import {
   uniqueNames,
   type HandwrittenItem,
   type MarkedCell,
+  type MarkedRecord,
 } from '../../services/campus/tableExtract.js'
 import type { Deck } from '../../services/campus/deck.js'
 import { showToast } from '../base/toastState.js'
@@ -23,35 +24,40 @@ import styles from './TableExtractDialog.module.css'
 
 type Stage = 'ocr' | 'mark' | 'confirm' | 'error'
 type Item = { id: string; name: string; checked: boolean; source: 'mark' | 'hand' | 'manual' }
+type Source = { rows: string[][]; cells: MarkedCell[]; handwritten: HandwrittenItem[] }
 
 /**
  * 表格提取：OCR 取结构 → 视觉模型找被标记的格子 → 人工确认 → 生成放映稿
- * 支持深色底、彩色底、彩色文字等标记；姓名列可手动指定
+ * 支持多张照片/多个文件（按页合并）、深色底、彩色标记、手写与自定义姓名列。
  */
 export const TableExtractDialog = ({
-  file,
+  files,
   onClose,
+  onAddFiles,
+  onTakePhotos,
   onUseVision,
 }: {
-  file: File
+  files: File[]
   onClose: () => void
+  onAddFiles: (files: File[]) => void
+  onTakePhotos: () => void
   onUseVision: () => void
 }) => {
   const t = useTranslate()
   const [stage, setStage] = useState<Stage>('ocr')
   const [error, setError] = useState<string | null>(null)
   const [markFailed, setMarkFailed] = useState(false)
-  const [cells, setCells] = useState<MarkedCell[]>([])
-  const [handwritten, setHandwritten] = useState<HandwrittenItem[]>([])
+  const [sources, setSources] = useState<Source[]>([])
   const [notes, setNotes] = useState('')
-  const [rows, setRows] = useState<string[][]>([])
   const [nameColumn, setNameColumn] = useState(0)
   const [items, setItems] = useState<Item[]>([])
   const [meaning, setMeaning] = useState(() => t('tableDefaultMeaning'))
   const [manual, setManual] = useState('')
   const [deck, setDeck] = useState<Deck | null>(null)
   const [viewerOpen, setViewerOpen] = useState(false)
+  const [progress, setProgress] = useState({ current: 0, total: files.length })
   const cancelled = useRef(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const describeError = useCallback((value: unknown): TranslationKey => {
     if (value instanceof ApiError && value.status === 402) {
@@ -63,14 +69,48 @@ export const TableExtractDialog = ({
     return 'tableOcrFailed'
   }, [])
 
-  const columnFallback = useCallback(
-    (col: number) => getColumnLabel(rows, col, t('tableColumnN', { index: col + 1 })),
-    [rows, t]
+  const recordsFor = useCallback(
+    (sourceList: Source[], primaryColumn: number): MarkedRecord[] => {
+      const output: MarkedRecord[] = []
+      const seen = new Set<string>()
+      sourceList.forEach((source, index) => {
+        const column = index === 0 ? primaryColumn : detectNameColumn(source.rows)
+        const list = resolveMarkedRecords(
+          source.cells,
+          source.rows,
+          column,
+          (col) => getColumnLabel(source.rows, col, t('tableColumnN', { index: col + 1 })),
+          source.handwritten
+        )
+        for (const record of list) {
+          const key = `${record.name}|${record.column}|${record.value}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            output.push(record)
+          }
+        }
+      })
+      return output
+    },
+    [t]
   )
 
   const records = useMemo(
-    () => resolveMarkedRecords(cells, rows, nameColumn, columnFallback, handwritten),
-    [cells, rows, nameColumn, columnFallback, handwritten]
+    () => recordsFor(sources, nameColumn),
+    [nameColumn, recordsFor, sources]
+  )
+
+  const handNamesFor = useCallback(
+    (sourceList: Source[], list: MarkedRecord[]) =>
+      sourceList.flatMap((source) =>
+        collectHandwrittenNames(source.handwritten, list, [
+          t('tableDefaultMeaning'),
+          t('tableMeaningFocus'),
+          t('tableMeaningUnsubmitted'),
+          t('tableMeaningExcellent'),
+        ])
+      ),
+    [t]
   )
 
   const scan = useCallback(async () => {
@@ -79,55 +119,68 @@ export const TableExtractDialog = ({
     setMarkFailed(false)
     setMeaning(t('tableDefaultMeaning'))
     setNotes('')
-    setHandwritten([])
+    setSources([])
+    setItems([])
     setStage('ocr')
+    setProgress({ current: 0, total: files.length })
     try {
-      const ocr = await recognizeFile(
-        useSettings.getState().apiKey ?? '',
-        file,
-        'rich_layout_recognition'
-      )
-      if (cancelled.current) {
-        return
-      }
-      const tableRows = parseTableRows(ocr.text)
-      const initialColumn = detectNameColumn(tableRows)
-      setRows(tableRows)
-      setNameColumn(initialColumn)
-      setStage('mark')
-      let analysis = { meaning: '', marked: [] as MarkedCell[], handwritten: [] as HandwrittenItem[], notes: '' }
-      try {
-        analysis = await analyzeTable(useSettings.getState().apiKey ?? '', file, ocr.text)
-      } catch {
+      const nextSources: Source[] = []
+      let nextMeaning = ''
+      const nextNotes: string[] = []
+      let failed = false
+      for (let index = 0; index < files.length; index += 1) {
+        setProgress({ current: index + 1, total: files.length })
+        const ocr = await recognizeFile(
+          useSettings.getState().apiKey ?? '',
+          files[index],
+          'rich_layout_recognition'
+        )
         if (cancelled.current) {
           return
         }
-        setMarkFailed(true)
+        const tableRows = parseTableRows(ocr.text)
+        let analysis = {
+          meaning: '',
+          marked: [] as MarkedCell[],
+          handwritten: [] as HandwrittenItem[],
+          notes: '',
+        }
+        try {
+          analysis = await analyzeTable(useSettings.getState().apiKey ?? '', files[index], ocr.text)
+        } catch {
+          if (cancelled.current) {
+            return
+          }
+          failed = true
+        }
+        if (cancelled.current) {
+          return
+        }
+        nextSources.push({
+          rows: tableRows,
+          cells: analysis.marked,
+          handwritten: analysis.handwritten,
+        })
+        if (!nextMeaning && analysis.meaning) {
+          nextMeaning = analysis.meaning
+        }
+        if (analysis.notes) {
+          nextNotes.push(analysis.notes)
+        }
       }
-      if (cancelled.current) {
-        return
-      }
-      setCells(analysis.marked)
-      setHandwritten(analysis.handwritten)
-      setNotes(analysis.notes)
-      if (analysis.meaning) {
-        setMeaning(analysis.meaning)
-      }
-      const nextRecords = resolveMarkedRecords(
-        analysis.marked,
-        tableRows,
-        initialColumn,
-        (col) => getColumnLabel(tableRows, col, t('tableColumnN', { index: col + 1 })),
-        analysis.handwritten
-      )
+      const primaryRows =
+        nextSources.find((source) => source.rows.length > 0)?.rows ?? ([] as string[][])
+      const initialColumn = detectNameColumn(primaryRows)
+      const nextRecords = recordsFor(nextSources, initialColumn)
       const markNames = uniqueNames(nextRecords)
-      const handNames = collectHandwrittenNames(analysis.handwritten, nextRecords, [
-        analysis.meaning,
-        t('tableDefaultMeaning'),
-        t('tableMeaningFocus'),
-        t('tableMeaningUnsubmitted'),
-        t('tableMeaningExcellent'),
-      ])
+      const handNames = handNamesFor(nextSources, nextRecords)
+      setSources(nextSources)
+      setNameColumn(initialColumn)
+      setMarkFailed(failed)
+      setNotes(nextNotes.join('；'))
+      if (nextMeaning) {
+        setMeaning(nextMeaning)
+      }
       setItems([
         ...markNames.map((name) => ({
           id: crypto.randomUUID(),
@@ -150,7 +203,7 @@ export const TableExtractDialog = ({
       setError(t(describeError(value)))
       setStage('error')
     }
-  }, [describeError, file, t])
+  }, [describeError, files, handNamesFor, recordsFor, t])
 
   useEffect(() => {
     void scan()
@@ -159,14 +212,18 @@ export const TableExtractDialog = ({
     }
   }, [scan])
 
+  const primaryRows = useMemo(
+    () => sources.find((source) => source.rows.length > 0)?.rows ?? [],
+    [sources]
+  )
+
   const changeNameColumn = (index: number) => {
     setNameColumn(index)
-    const nextRecords = resolveMarkedRecords(cells, rows, index, (col) =>
-      getColumnLabel(rows, col, t('tableColumnN', { index: col + 1 })), handwritten)
+    const nextRecords = recordsFor(sources, index)
     const names = uniqueNames(nextRecords)
     setItems((current) => {
       const kept = current.filter(
-        (item) => !records.some((record) => record.name === item.name) && !names.includes(item.name)
+        (item) => item.source !== 'mark' && !names.includes(item.name)
       )
       return [
         ...names.map((name) => ({
@@ -213,8 +270,15 @@ export const TableExtractDialog = ({
     setManual('')
   }
 
+  const addFiles = (list: FileList | null) => {
+    const next = list ? Array.from(list) : []
+    if (next.length > 0) {
+      onAddFiles(next)
+    }
+  }
+
   const selected = items.filter((item) => item.checked && item.name.trim())
-  const total = rows.length > 0 ? Math.max(rows.length - 1, selected.length) : 0
+  const total = primaryRows.length > 0 ? Math.max(primaryRows.length - 1, selected.length) : 0
 
   const generate = () => {
     if (selected.length === 0) {
@@ -269,16 +333,48 @@ export const TableExtractDialog = ({
         aria-label={t('campusTable')}
         onClick={(event) => event.stopPropagation()}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          hidden
+          onChange={(event) => {
+            addFiles(event.target.files)
+            event.target.value = ''
+          }}
+        />
+
         {stage === 'ocr' || stage === 'mark' ? (
           <div className={styles.center}>
             <div className={styles.title}>{t('campusTable')}</div>
             <p className={styles.hint}>
-              {stage === 'ocr' ? t('tableStageOcr') : t('tableStageMark')}
+              {stage === 'ocr'
+                ? t('tableScanningFile', {
+                    index: Math.max(progress.current, 1),
+                    total: progress.total,
+                  })
+                : t('tableStageMark')}
             </p>
+            {files.length > 1 ? (
+              <p className={styles.subHint}>{t('tableFilesCount', { count: files.length })}</p>
+            ) : null}
             <div className={styles.spinner} aria-hidden="true" />
-            <button type="button" className={styles.secondary} onClick={onClose}>
-              {t('cancel')}
-            </button>
+            <div className={styles.actions}>
+              <button type="button" className={styles.secondary} onClick={onClose}>
+                {t('cancel')}
+              </button>
+              <button type="button" className={styles.secondary} onClick={onTakePhotos}>
+                {t('tableTakePhotos')}
+              </button>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {t('tableAddFiles')}
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -289,6 +385,16 @@ export const TableExtractDialog = ({
             <div className={styles.actions}>
               <button type="button" className={styles.secondary} onClick={onClose}>
                 {t('cancel')}
+              </button>
+              <button type="button" className={styles.secondary} onClick={onTakePhotos}>
+                {t('tableTakePhotos')}
+              </button>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {t('tableAddFiles')}
               </button>
               <button type="button" className={styles.secondary} onClick={onUseVision}>
                 {t('tableOcrUseVision')}
@@ -303,6 +409,9 @@ export const TableExtractDialog = ({
         {stage === 'confirm' ? (
           <>
             <div className={styles.title}>{t('tableMarkTitle')}</div>
+            {files.length > 1 ? (
+              <p className={styles.subHint}>{t('tableFilesCount', { count: files.length })}</p>
+            ) : null}
 
             <div className={styles.fields}>
               <label className={styles.meaning}>
@@ -313,14 +422,14 @@ export const TableExtractDialog = ({
                   maxLength={12}
                 />
               </label>
-              {rows.length > 0 && (rows[0]?.length ?? 0) > 1 ? (
+              {primaryRows.length > 0 && (primaryRows[0]?.length ?? 0) > 1 ? (
                 <label className={styles.meaning}>
                   <span>{t('tableMarkNameColumn')}</span>
                   <select
                     value={nameColumn}
                     onChange={(event) => changeNameColumn(Number(event.target.value))}
                   >
-                    {rows[0].map((label, index) => (
+                    {primaryRows[0].map((label, index) => (
                       <option key={index} value={index}>
                         {label || t('tableColumnN', { index: index + 1 })}
                       </option>
@@ -408,6 +517,16 @@ export const TableExtractDialog = ({
 
             <div className={styles.foot}>
               <span className={styles.count}>{t('tableMarkCount', { count: selected.length })}</span>
+              <button type="button" className={styles.secondary} onClick={onTakePhotos}>
+                {t('tableTakePhotos')}
+              </button>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {t('tableAddFiles')}
+              </button>
               <button type="button" className={styles.secondary} onClick={onClose}>
                 {t('cancel')}
               </button>

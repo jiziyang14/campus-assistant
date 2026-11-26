@@ -148,6 +148,9 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
 }
 
 const putFiles = async (store: 'files' | 'filesStaging', files: StoredFile[]) => {
+  if (!files.length) {
+    return
+  }
   const tx = (await getDB()).transaction(store, 'readwrite')
   await Promise.all([...files.map((file) => tx.store.put(file)), tx.done])
 }
@@ -167,36 +170,54 @@ export const clearStaging = async (): Promise<void> => {
   ])
 }
 
-export const addStagingSession = async (session: Session): Promise<void> => {
-  await (await getDB()).add('sessionsStaging', session)
+export const addStagingSessions = async (sessions: Session[]): Promise<void> => {
+  if (!sessions.length) {
+    return
+  }
+  const tx = (await getDB()).transaction('sessionsStaging', 'readwrite')
+  await Promise.all([...sessions.map((session) => tx.store.add(session)), tx.done])
 }
 
 export const saveStagingFiles = (files: StoredFile[]): Promise<void> =>
   putFiles('filesStaging', files)
 
-/** 图片位于会话 JSON 之后；全部读完后回填具体 MIME，保留归档给出的 isImage 标识。 */
-export const updateStagingFileTypes = async (types: ReadonlyMap<string, string>): Promise<void> => {
+/** 回填 MIME，保留归档中的 isImage 标识。 */
+export const updateStagingFileTypes = async (
+  types: ReadonlyMap<string, string>,
+  sessionIds: ReadonlySet<string>
+): Promise<void> => {
+  if (sessionIds.size === 0) {
+    return
+  }
   const tx = (await getDB()).transaction('sessionsStaging', 'readwrite')
   await Promise.all([
     (async () => {
-      for (let cursor = await tx.store.openCursor(); cursor; cursor = await cursor.continue()) {
-        const session = cursor.value
-        let changed = false
-        for (const message of session.messages) {
-          if (message.role !== 'user') {
+      try {
+        for (const id of sessionIds) {
+          const session = await tx.store.get(id)
+          if (!session) {
             continue
           }
-          for (const file of message.files) {
-            const type = types.get(file.id) ?? ''
-            if (file.mimeType !== type) {
-              file.mimeType = type
-              changed = true
+          let changed = false
+          for (const message of session.messages) {
+            if (message.role !== 'user') {
+              continue
+            }
+            for (const file of message.files) {
+              const type = types.get(file.id) ?? ''
+              if (file.mimeType !== type) {
+                file.mimeType = type
+                changed = true
+              }
             }
           }
+          if (changed) {
+            await tx.store.put(session)
+          }
         }
-        if (changed) {
-          await cursor.update(session)
-        }
+      } catch (error) {
+        abortTransaction(tx)
+        throw error
       }
     })(),
     tx.done,
@@ -242,6 +263,92 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
   await Promise.all([move('sessionsStaging', 'sessions'), move('filesStaging', 'files'), tx.done])
   // 直接返回本次提交的列表，调用方无需在替换成功后再发起可能失败的读取。
   return summaries
+}
+
+/**
+ * 合并导入：保留现有会话，只把暂存中的会话追加进来。
+ * - 内容完全相同的会话（updatedAt 与消息数一致）视为重复，跳过
+ * - 同一 ID 但内容不同（两台电脑各自改过）另存为副本，绝不覆盖本地
+ * - 附件全部换成本地新 ID，避免与原会话的图片串台
+ */
+export const mergeStaging = async (): Promise<{
+  added: number
+  skipped: number
+  copied: number
+}> => {
+  const tx = (await getDB()).transaction(
+    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging'],
+    'readwrite'
+  )
+  const sessions = tx.objectStore('sessions')
+  const summaries = tx.objectStore('sessionSummaries')
+  const files = tx.objectStore('files')
+  const stagedSessions = tx.objectStore('sessionsStaging')
+  const stagedFiles = tx.objectStore('filesStaging')
+  const blobs = new Map<string, Blob>()
+  for (
+    let cursor = await stagedFiles.openCursor();
+    cursor;
+    cursor = await cursor.continue()
+  ) {
+    blobs.set(String(cursor.value.id), cursor.value.blob)
+  }
+  let added = 0
+  let skipped = 0
+  let copied = 0
+  try {
+    for (
+      let cursor = await stagedSessions.openCursor();
+      cursor;
+      cursor = await cursor.continue()
+    ) {
+      const session = cursor.value as Session
+      const existing = await sessions.get(session.id)
+      if (
+        existing &&
+        existing.updatedAt === session.updatedAt &&
+        existing.messages.length === session.messages.length
+      ) {
+        skipped += 1
+        continue
+      }
+      if (existing) {
+        session.id = `${session.id}-copy-${Date.now().toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`
+        session.title = `${session.title}（导入）`
+        copied += 1
+      }
+      const remap = new Map<string, string>()
+      for (const message of session.messages) {
+        if (message.role !== 'user') {
+          continue
+        }
+        for (const file of message.files) {
+          let next = remap.get(file.id)
+          if (!next) {
+            next = crypto.randomUUID()
+            remap.set(file.id, next)
+            const blob = blobs.get(file.id)
+            if (blob) {
+              await files.put({ id: next, blob })
+            }
+          }
+          file.id = next
+        }
+      }
+      await sessions.put(session)
+      await summaries.put(storedSummary(session))
+      added += 1
+    }
+    await stagedSessions.clear()
+    await stagedFiles.clear()
+  } catch (error) {
+    abortTransaction(tx)
+    throw error
+  }
+  await tx.done
+  return { added, skipped, copied }
 }
 
 /** 本地存储失败不打断对话，只在控制台留痕 */

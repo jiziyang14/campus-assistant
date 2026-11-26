@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
-/** 相机用途：attach 拍完作为附件；table 拍完走表格 OCR */
-export type CameraMode = 'attach' | 'table'
+/** 相机用途：attach 拍完作为附件；teach 拍照讲题；table 拍完走表格 OCR；beauty 颜值争霸赛自拍 */
+export type CameraMode = 'attach' | 'teach' | 'table' | 'beauty'
 
 export const useCameraDialog = create<{ open: boolean; mode: CameraMode }>(() => ({
   open: false,

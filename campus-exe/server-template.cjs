@@ -6,7 +6,8 @@ const os = require('node:os')
 const path = require('node:path')
 const { Readable } = require('node:stream')
 const { pipeline } = require('node:stream/promises')
-const { spawn } = require('node:child_process')
+const { spawn, execFile } = require('node:child_process')
+const { promisify } = require('node:util')
 
 const ASSETS = __ASSETS__
 const EMBEDDED_CONFIG = __CONFIG__
@@ -151,17 +152,232 @@ const isAllowedOrigin = (request) => {
   }
 }
 
-const readRawBody = async (request) => {
+const readRawBody = async (request, maxBytes = 120 * 1024 * 1024) => {
   const chunks = []
   let size = 0
   for await (const chunk of request) {
     size += chunk.length
-    if (size > 120 * 1024 * 1024) {
+    if (size > maxBytes) {
       throw new Error('请求体过大')
     }
     chunks.push(chunk)
   }
   return chunks.length > 0 ? Buffer.concat(chunks) : undefined
+}
+
+const execFileAsync = promisify(execFile)
+
+/** 备份固定放在 U 盘根目录的这个文件夹里，导入导出都不经过浏览器下载目录 */
+const BACKUP_DIR_NAME = '校园助手备份'
+const MAX_BACKUP_BYTES = 256 * 1024 * 1024
+
+/** 用系统 CIM 查询可移动磁盘（U 盘/移动硬盘） */
+const listRemovableDrives = async () => {
+  const script =
+    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,Size,FreeSpace | ConvertTo-Json -Compress"
+  const { stdout } = await execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-Command', script],
+    { timeout: 15000, windowsHide: true, maxBuffer: 1024 * 1024 }
+  )
+  const text = String(stdout || '').trim()
+  if (!text) {
+    return []
+  }
+  const parsed = JSON.parse(text)
+  const rows = Array.isArray(parsed) ? parsed : [parsed]
+  return rows
+    .filter((row) => /^[A-Za-z]:$/.test(String(row.DeviceID || '').trim()))
+    .map((row) => ({
+      drive: String(row.DeviceID).trim().toUpperCase(),
+      label: String(row.VolumeName || ''),
+      size: Number(row.Size || 0),
+      freeSpace: Number(row.FreeSpace || 0),
+    }))
+}
+
+/** 盘符必须是当前插着的可移动磁盘，避免前端传任意路径写系统盘 */
+const resolveRemovableDrive = async (value) => {
+  const drive = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\\/]+$/, '')
+  if (!/^[A-Z]:$/.test(drive)) {
+    return null
+  }
+  const drives = await listRemovableDrives()
+  return drives.some((item) => item.drive === drive) ? drive : null
+}
+
+/** 只允许简单文件名，禁止路径分隔符与 ..，防止路径穿越 */
+const safeBackupName = (value) => {
+  const name = String(value || '').trim()
+  if (!name || name.length > 120 || !/\.zip$/i.test(name)) {
+    return null
+  }
+  if (name.includes('..') || /[\\/:*?"<>|]/.test(name)) {
+    return null
+  }
+  return name
+}
+
+const backupDirOf = (drive) => `${drive}\\${BACKUP_DIR_NAME}`
+
+const listBackups = async (drive) => {
+  const dir = backupDirOf(drive)
+  let entries
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true })
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
+  const files = []
+  for (const entry of entries) {
+    if (!entry.isFile() || !/\.zip$/i.test(entry.name)) {
+      continue
+    }
+    try {
+      const stat = await fs.promises.stat(path.join(dir, entry.name))
+      files.push({ name: entry.name, size: stat.size, mtime: stat.mtimeMs })
+    } catch {
+      // 单个文件读不到时跳过，不影响其他备份
+    }
+  }
+  return files.sort((a, b) => b.mtime - a.mtime)
+}
+
+/** U 盘备份：列出可移动盘、写入备份、列出与读取备份 */
+const handleDriveBackup = async (request, response, url) => {
+  if (url.pathname === '/campus/api/drives' && request.method === 'GET') {
+    try {
+      sendJson(response, 200, { drives: await listRemovableDrives() })
+    } catch (error) {
+      sendJson(response, 500, {
+        error: {
+          code: 'drives_failed',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })
+    }
+    return
+  }
+
+  if (url.pathname === '/campus/api/backups' && request.method === 'GET') {
+    const drive = await resolveRemovableDrive(url.searchParams.get('drive'))
+    if (!drive) {
+      sendJson(response, 400, {
+        error: { code: 'drive_invalid', message: '未找到该可移动磁盘，请确认 U 盘已插好。' },
+      })
+      return
+    }
+    try {
+      sendJson(response, 200, { drive, backups: await listBackups(drive) })
+    } catch (error) {
+      sendJson(response, 500, {
+        error: {
+          code: 'backups_failed',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })
+    }
+    return
+  }
+
+  if (url.pathname === '/campus/api/backup' && request.method === 'POST') {
+    const drive = await resolveRemovableDrive(url.searchParams.get('drive'))
+    if (!drive) {
+      sendJson(response, 400, {
+        error: { code: 'drive_invalid', message: '未找到该可移动磁盘，请确认 U 盘已插好。' },
+      })
+      return
+    }
+    const name = safeBackupName(url.searchParams.get('name'))
+    if (!name) {
+      sendJson(response, 400, { error: { code: 'name_invalid', message: '备份文件名不合法。' } })
+      return
+    }
+    let body
+    try {
+      body = await readRawBody(request, MAX_BACKUP_BYTES)
+    } catch {
+      sendJson(response, 413, {
+        error: { code: 'too_large', message: '备份文件超过 256MB，请清理后再试。' },
+      })
+      return
+    }
+    if (!body || body.length === 0) {
+      sendJson(response, 400, { error: { code: 'empty', message: '备份内容为空。' } })
+      return
+    }
+    const dir = backupDirOf(drive)
+    const file = path.resolve(dir, name)
+    if (path.dirname(file) !== path.resolve(dir)) {
+      sendJson(response, 400, { error: { code: 'name_invalid', message: '备份文件名不合法。' } })
+      return
+    }
+    try {
+      await fs.promises.mkdir(dir, { recursive: true })
+      await fs.promises.writeFile(file, body)
+      log('info', '已保存 U 盘备份', { drive, name, size: body.length })
+      sendJson(response, 200, { saved: true, name, size: body.length, path: file })
+    } catch (error) {
+      sendJson(response, 500, {
+        error: {
+          code: 'write_failed',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })
+    }
+    return
+  }
+
+  if (url.pathname === '/campus/api/backup' && request.method === 'GET') {
+    const drive = await resolveRemovableDrive(url.searchParams.get('drive'))
+    const name = safeBackupName(url.searchParams.get('name'))
+    if (!drive || !name) {
+      sendJson(response, 400, {
+        error: { code: 'request_invalid', message: '备份位置或文件名不合法。' },
+      })
+      return
+    }
+    const dir = backupDirOf(drive)
+    const file = path.resolve(dir, name)
+    if (path.dirname(file) !== path.resolve(dir)) {
+      sendJson(response, 400, { error: { code: 'name_invalid', message: '备份文件名不合法。' } })
+      return
+    }
+    let stat
+    try {
+      stat = await fs.promises.stat(file)
+    } catch {
+      stat = null
+    }
+    if (!stat || !stat.isFile()) {
+      sendJson(response, 404, { error: { code: 'not_found', message: '备份文件不存在。' } })
+      return
+    }
+    response.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Length': stat.size,
+      'Content-Disposition': `attachment; filename="backup.zip"; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Cache-Control': 'no-store',
+      ...securityHeaders(),
+    })
+    try {
+      await pipeline(fs.createReadStream(file), response)
+    } catch (error) {
+      log('error', '读取 U 盘备份失败', {
+        drive,
+        name,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      response.end()
+    }
+    return
+  }
 }
 
 const proxy = async (request, response, url) => {
@@ -264,7 +480,7 @@ const fixTaskbarIcon = () => {
       } catch {
         // 辅助程序还在运行时文件被占用，忽略
       }
-    }, 90_000)
+    }, 240_000)
   } catch {
     // 图标优化失败不影响主流程
   }
@@ -299,6 +515,11 @@ const route = async (request, response) => {
       },
       logDir: LOG_DIR,
     })
+    return
+  }
+
+  if (url.pathname.startsWith('/campus/api/')) {
+    await handleDriveBackup(request, response, url)
     return
   }
 

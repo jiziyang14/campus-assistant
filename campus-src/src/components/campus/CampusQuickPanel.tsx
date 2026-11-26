@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { translate, useTranslate } from '../../i18n/index.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
-import { sendMessage, useChatStore } from '../../services/chat/store.js'
+import { sendMessage, createSession, selectSession, useChatStore } from '../../services/chat/store.js'
 import { setDraftText } from '../../services/chat/drafts.js'
 import { closeCampusPanel, useCampusPanel } from './campusPanelState.js'
 import { openCameraDialog } from './cameraDialogState.js'
@@ -19,6 +19,8 @@ type Shortcut = {
 
 const STORAGE_KEY = 'campus:shortcuts:v1'
 const SEED_KEY = 'campus:shortcuts:seed:explain'
+/** 颜值争霸赛固定会话：重复进入都写进同一个会话，照片和历史会保留 */
+const BEAUTY_SESSION_KEY = 'campus:beauty-session'
 
 /** 拍照讲题：题目在照片里，提示词直接按“读题→思路→推导→答案→易错点”展开 */
 const photoExplainPrompt = () => translate('campusPhotoExplainPrompt')
@@ -118,6 +120,43 @@ export const CampusQuickPanel = () => {
     closeCampusPanel()
   }
 
+  /** 进入固定的颜值争霸赛会话：不存在就新建，之后每次进入都复用同一段历史 */
+  const openBeautyContest = () => {
+    if (!ensureApiKey()) {
+      return
+    }
+    closeCampusPanel()
+    const state = useChatStore.getState()
+    const title = translate('campusBeauty')
+    let id: string | undefined
+    try {
+      const stored = localStorage.getItem(BEAUTY_SESSION_KEY)
+      if (stored && state.sessions.some((session) => session.id === stored)) {
+        id = stored
+      }
+    } catch {
+      // 存储不可用时只按标题查找
+    }
+    id ??= state.sessions.find((session) => session.title === title)?.id
+    if (id) {
+      selectSession(id)
+    } else {
+      id = createSession(title) ?? undefined
+      if (id) {
+        try {
+          localStorage.setItem(BEAUTY_SESSION_KEY, id)
+        } catch {
+          // 存储不可用时仍保留当前会话
+        }
+      }
+    }
+    if (!id) {
+      return
+    }
+    // 会话切换可能重建输入框，等界面稳定后再打开相机，避免被卸载时关掉
+    window.setTimeout(() => openCameraDialog('beauty'), 150)
+  }
+
   const runShortcut = (shortcut: Shortcut) => {
     if (!ensureApiKey()) {
       return
@@ -140,7 +179,7 @@ export const CampusQuickPanel = () => {
     const sessionId = useChatStore.getState().activeId
     setDraftText(sessionId, photoExplainPrompt())
     closeCampusPanel()
-    openCameraDialog()
+    openCameraDialog('teach')
   }
 
   const resetForm = () => {
@@ -249,8 +288,42 @@ export const CampusQuickPanel = () => {
                   openCameraDialog('table')
                 }}
               >
+                <span className={styles.cardIcon} aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <rect
+                      x="2.5"
+                      y="3.5"
+                      width="15"
+                      height="13"
+                      rx="2"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
+                    <path
+                      d="M2.5 8h15M8 8v8.5M13 8v8.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
+                  </svg>
+                </span>
                 <span className={styles.cardTitle}>{t('campusTable')}</span>
                 <span className={styles.cardHint}>{t('campusTableHint')}</span>
+              </button>
+
+              <button type="button" className={styles.card} onClick={openBeautyContest}>
+                <span className={styles.cardIcon} aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path
+                      d="M3 14.5 2 6l4.5 3L10 4l3.5 5L18 6l-1 8.5H3Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path d="M4.5 16.5h11" stroke="currentColor" strokeWidth="1.5" />
+                  </svg>
+                </span>
+                <span className={styles.cardTitle}>{t('campusBeauty')}</span>
+                <span className={styles.cardHint}>{t('campusBeautyHint')}</span>
               </button>
 
               {shortcuts.map((shortcut) =>
@@ -277,6 +350,16 @@ export const CampusQuickPanel = () => {
                         runShortcut(shortcut)
                       }}
                     >
+                      <span className={styles.cardIcon} aria-hidden="true">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                          <path
+                            d="M10 2.6l1.7 4.5 4.5 1.7-4.5 1.7L10 15l-1.7-4.5L3.8 8.8l4.5-1.7L10 2.6Z"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </span>
                       <span className={styles.cardTitle}>{shortcut.title}</span>
                       {shortcut.hint ? (
                         <span className={styles.cardHint}>{shortcut.hint}</span>

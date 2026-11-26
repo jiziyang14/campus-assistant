@@ -6,6 +6,15 @@ const DAY = 86_400_000
 
 const startOfDay = (time: number) => new Date(time).setHours(0, 0, 0, 0)
 
+/** 按标题过滤会话：忽略首尾空格与大小写，空关键词返回原列表 */
+export const filterSessions = (sessions: SessionSummary[], keyword: string) => {
+  const query = keyword.trim().toLowerCase()
+  if (!query) {
+    return sessions
+  }
+  return sessions.filter((session) => session.title.toLowerCase().includes(query))
+}
+
 /** 分组：今天 / 昨天 / 7 天内 / 30 天内 / 按月 */
 export const groupSessions = (sessions: SessionSummary[], now: number, t = translate) => {
   const groups: { key: string; label: string; sessions: SessionSummary[] }[] = []

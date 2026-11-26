@@ -65,6 +65,34 @@
   }
 }
 
+@media (min-width: 1600px), ((pointer: coarse) and (min-width: 1024px)) {
+  .item {
+    height: 52px;
+    padding: 12px 8px 12px 12px;
+    border-radius: 14px;
+    font-size: 15.5px;
+  }
+
+  .title {
+    line-height: 22px;
+  }
+
+  /* 触屏没有 hover，操作入口常显并保持 44px 热区 */
+  .action {
+    display: flex;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .renameInput {
+    height: 52px;
+    border-radius: 14px;
+    font-size: 15.5px;
+  }
+}
+
 @media not all and (min-width: 768px) {
   .item {
     height: 44px;
@@ -84,3 +112,4 @@
     font-size: 16px;
   }
 }
+

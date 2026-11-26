@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
+import { ACCEPT } from '../../services/attachments.js'
 import {
   collectCameras,
   findDocumentCamera,
@@ -19,6 +20,8 @@ type CameraRequest = {
   deviceId: string | null
   facing: Facing
 }
+
+type Shot = { file: File; url: string }
 
 // 首次使用时浏览器会弹出权限询问，超时留足用户确认时间
 const START_TIMEOUT = 20_000
@@ -49,53 +52,63 @@ const describeError = (error: unknown): CameraErrorKey => {
   return 'cameraFailed'
 }
 
-/** 相机拍照：预览、拍照、重拍、切换前后摄像头，确认后作为附件加入输入框 */
+/**
+ * 相机拍照：预览、连拍多张、单张删除、切换前后摄像头。
+ * preferred 为 selfie 时不自动选展台摄像头，用于颜值争霸赛这类自拍场景。
+ */
 export const CameraDialog = ({
   open,
+  preferred = 'document',
+  allowUpload = false,
+  title,
   onClose,
-  onCapture,
+  onDone,
 }: {
   open: boolean
+  preferred?: 'document' | 'selfie'
+  allowUpload?: boolean
+  title?: string
   onClose: () => void
-  onCapture: (file: File) => void
+  onDone: (files: File[]) => void
 }) => {
   const t = useTranslate()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const shotRef = useRef<File | null>(null)
-  const shotUrlRef = useRef<string | null>(null)
+  const shotsRef = useRef<Shot[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [request, setRequest] = useState<CameraRequest>(INITIAL_REQUEST)
   const [facing, setFacing] = useState<Facing>('user')
   const [cameras, setCameras] = useState<CameraOption[]>([])
   const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null)
   const [status, setStatus] = useState<CameraStatus>('starting')
   const [errorKey, setErrorKey] = useState<CameraErrorKey>('cameraFailed')
-  const [shotUrl, setShotUrl] = useState<string | null>(null)
+  const [shots, setShots] = useState<Shot[]>([])
+  /** 当前预览第几张；null 表示回到实时取景 */
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const preferSelfie = preferred === 'selfie'
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
   }, [])
 
-  const revokeShot = useCallback(() => {
-    if (shotUrlRef.current) {
-      URL.revokeObjectURL(shotUrlRef.current)
-      shotUrlRef.current = null
-    }
-    shotRef.current = null
-    setShotUrl(null)
+  const revokeShots = useCallback((list: Shot[]) => {
+    list.forEach((shot) => URL.revokeObjectURL(shot.url))
   }, [])
 
   const close = useCallback(() => {
     stopStream()
-    revokeShot()
+    revokeShots(shotsRef.current)
+    shotsRef.current = []
+    setShots([])
+    setPreviewIndex(null)
     setStatus('starting')
-    // 每次打开都回到默认的展台摄像头，手动切换只对本次拍摄有效
+    // 每次打开都回到默认摄像头，手动切换只对本次拍摄有效
     setRequest(INITIAL_REQUEST)
     setFacing('user')
     skipPreferredRef.current = false
     onClose()
-  }, [onClose, revokeShot, stopStream])
+  }, [onClose, revokeShots, stopStream])
   const closeRef = useRef(close)
   closeRef.current = close
   const openRef = useRef(open)
@@ -118,7 +131,7 @@ export const CameraDialog = ({
       setStatus('error')
     }, START_TIMEOUT)
     setStatus('starting')
-    revokeShot()
+    setPreviewIndex(null)
     // 本次取流是否自动用上了展台摄像头
     let usingPreferred = false
     const start = async () => {
@@ -129,13 +142,12 @@ export const CameraDialog = ({
         return
       }
       try {
-        // 没有指定设备时优先展台摄像头；权限已授予时这里能直接读到设备名（单次取流即可），
-        // 首次使用没有权限、读不到设备名，要等取流成功后再补一次切换
+        // 自拍模式不自动切展台；普通模式优先展台摄像头
         let targetDeviceId = request.deviceId
-        if (!targetDeviceId && !skipPreferredRef.current) {
-          const preferred = findDocumentCamera(await listCameras())
-          if (preferred) {
-            targetDeviceId = preferred.deviceId
+        if (!targetDeviceId && !skipPreferredRef.current && !preferSelfie) {
+          const preferredCamera = findDocumentCamera(await listCameras())
+          if (preferredCamera) {
+            targetDeviceId = preferredCamera.deviceId
             usingPreferred = true
           }
         }
@@ -180,14 +192,14 @@ export const CameraDialog = ({
           return
         }
         setCameras(list)
-        if (!request.deviceId && !usingPreferred && !skipPreferredRef.current) {
+        if (!request.deviceId && !usingPreferred && !skipPreferredRef.current && !preferSelfie) {
           // 默认摄像头不是展台（首次授权读不到设备名）：自动切到展台
-          const preferred = findDocumentCamera(list)
-          if (preferred && preferred.deviceId !== deviceId) {
+          const preferredCamera = findDocumentCamera(list)
+          if (preferredCamera && preferredCamera.deviceId !== deviceId) {
             setFacing('environment')
             setRequest({
               revision: request.revision + 1,
-              deviceId: preferred.deviceId,
+              deviceId: preferredCamera.deviceId,
               facing: 'environment',
             })
           }
@@ -230,7 +242,20 @@ export const CameraDialog = ({
       window.clearTimeout(timer)
       stopStream()
     }
-  }, [open, request, revokeShot, stopStream])
+  }, [open, preferSelfie, request, stopStream])
+
+  // 从预览回到取景时视频元素会重新挂载，把还活着的流接回去，避免重新启动相机
+  useEffect(() => {
+    const stream = streamRef.current
+    const video = videoRef.current
+    if (status !== 'ready' || previewIndex !== null || !stream || !video) {
+      return
+    }
+    if (video.srcObject !== stream) {
+      video.srcObject = stream
+      void video.play().catch(() => {})
+    }
+  }, [status, previewIndex])
 
   useEffect(() => {
     if (!open) {
@@ -290,34 +315,70 @@ export const CameraDialog = ({
         if (!blob || !openRef.current) {
           return
         }
-        shotRef.current = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
-        const url = URL.createObjectURL(blob)
-        shotUrlRef.current = url
-        setShotUrl(url)
+        const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
+        const shot: Shot = { file, url: URL.createObjectURL(blob) }
+        shotsRef.current = [...shotsRef.current, shot]
+        setShots(shotsRef.current)
+        setPreviewIndex(shotsRef.current.length - 1)
         setStatus('preview')
-        stopStream()
+        // 不关闭视频流：继续拍时直接回到实时取景，不用重新启动相机
       },
       'image/jpeg',
       0.92
     )
   }
 
-  const useShot = () => {
-    if (!shotRef.current) {
+  const resume = () => {
+    // 流还在就直接恢复取景；设备被拔出或流已停止时才重新启动
+    const live = Boolean(streamRef.current?.getVideoTracks().some((track) => track.readyState === 'live'))
+    setPreviewIndex(null)
+    if (live) {
+      setStatus('ready')
       return
     }
-    onCapture(shotRef.current)
+    retry()
+  }
+
+  const removeShot = (index: number) => {
+    const target = shotsRef.current[index]
+    if (!target) {
+      return
+    }
+    URL.revokeObjectURL(target.url)
+    shotsRef.current = shotsRef.current.filter((_, itemIndex) => itemIndex !== index)
+    const nextPreview =
+      shotsRef.current.length === 0
+        ? null
+        : Math.min(previewIndex === null ? shotsRef.current.length : previewIndex, shotsRef.current.length - 1)
+    setShots(shotsRef.current)
+    setPreviewIndex(nextPreview)
+    if (shotsRef.current.length === 0) {
+      resume()
+    }
+  }
+
+  const finish = () => {
+    const files = shotsRef.current.map((shot) => shot.file)
+    if (files.length === 0) {
+      return
+    }
+    onDone(files)
     close()
   }
 
-  const retake = () => {
-    revokeShot()
-    retry()
+  /** 上传文件与拍照走同一出口：选完直接把已拍的照片一起交出去 */
+  const pickFiles = (picked: File[]) => {
+    if (picked.length === 0) {
+      return
+    }
+    onDone([...shotsRef.current.map((shot) => shot.file), ...picked])
+    close()
   }
 
   const activeCameraIndex = cameras.findIndex((camera) => camera.deviceId === activeDeviceId)
   const activeCamera = activeCameraIndex >= 0 ? cameras[activeCameraIndex] : undefined
   const switchable = cameras.length !== 1
+  const previewShot = previewIndex === null ? null : shots[previewIndex]
 
   return (
     <div className={styles.mask} onClick={close}>
@@ -325,12 +386,12 @@ export const CameraDialog = ({
         className={styles.dialog}
         role="dialog"
         aria-modal="true"
-        aria-label={t('cameraTitle')}
+        aria-label={title ?? t('cameraTitle')}
         onClick={(event) => event.stopPropagation()}
       >
         <div className={styles.head}>
           <div className={styles.titleBlock}>
-            <div className={styles.title}>{t('cameraTitle')}</div>
+            <div className={styles.title}>{title ?? t('cameraTitle')}</div>
             {cameras.length > 0 ? (
               <div className={styles.cameraInfo}>
                 {t('cameraPosition', {
@@ -347,8 +408,8 @@ export const CameraDialog = ({
         </div>
 
         <div className={styles.stage}>
-          {shotUrl ? (
-            <img src={shotUrl} alt={t('cameraTitle')} />
+          {previewShot ? (
+            <img src={previewShot.url} alt={t('cameraTitle')} />
           ) : (
             <video
               ref={videoRef}
@@ -371,14 +432,43 @@ export const CameraDialog = ({
           ) : null}
         </div>
 
+        {shots.length > 0 ? (
+          <div className={styles.shots} aria-label={t('cameraShots')}>
+            {shots.map((shot, index) => (
+              <div
+                key={shot.url}
+                className={index === previewIndex ? styles.shotActive : styles.shot}
+              >
+                <button
+                  type="button"
+                  className={styles.shotPreview}
+                  onClick={() => setPreviewIndex(index)}
+                  aria-label={t('cameraViewShot', { index: index + 1 })}
+                >
+                  <img src={shot.url} alt="" />
+                </button>
+                <button
+                  type="button"
+                  className={styles.shotRemove}
+                  onClick={() => removeShot(index)}
+                  aria-label={t('cameraRemoveShot')}
+                  title={t('cameraRemoveShot')}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className={styles.foot}>
-          {shotUrl ? (
+          {previewShot ? (
             <>
-              <button type="button" className={styles.secondary} onClick={retake}>
-                {t('cameraRetake')}
+              <button type="button" className={styles.secondary} onClick={resume}>
+                {t('cameraAddMore')}
               </button>
-              <button type="button" className={styles.primary} onClick={useShot}>
-                {t('cameraUse')}
+              <button type="button" className={styles.primary} onClick={finish}>
+                {t('cameraDone', { count: shots.length })}
               </button>
             </>
           ) : (
@@ -392,6 +482,15 @@ export const CameraDialog = ({
               >
                 {t('cameraSwitch')}
               </button>
+              {allowUpload ? (
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {t('uploadFile')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.primary}
@@ -403,6 +502,19 @@ export const CameraDialog = ({
             </>
           )}
         </div>
+        {allowUpload ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            hidden
+            accept={ACCEPT}
+            onChange={(event) => {
+              pickFiles(Array.from(event.target.files ?? []))
+              event.target.value = ''
+            }}
+          />
+        ) : null}
       </div>
     </div>
   )

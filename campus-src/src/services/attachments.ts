@@ -1,9 +1,13 @@
 import { create } from 'zustand'
 import type { LinkedMessage, TranslationMessage } from '../i18n/index.js'
+import { getAbortReason, throwIfAborted } from '../utils/abort.js'
+import { isUploadImageOversized } from '../utils/resizeUploadImage.js'
 import { uploadFile } from './api/client.js'
 import { classifyApiError, getUploadErrorInfo, isRetryableApiError } from './api/errors.js'
 import { recognizeFile } from './api/ocr.js'
 import type { FilePurpose } from './api/types.js'
+import { loadFile } from './chat/db.js'
+import type { FileAttachment } from './chat/types.js'
 import { ACCEPT_FILE_EXTS } from './uploadExts.js'
 
 /** 允许上传的扩展名，按扩展名白名单过滤，清单见 uploadExts.ts */
@@ -128,7 +132,7 @@ const enqueueUpload = (
   new Promise<string>((resolve, reject) => {
     queue.push(async () => {
       if (signal.aborted) {
-        reject(signal.reason)
+        reject(getAbortReason(signal))
         return
       }
       try {
@@ -209,6 +213,30 @@ export const uploadAttachment = (
 export const cancelUpload = (id: string) => {
   pending.get(id)?.controller.abort()
   setTask(id, null)
+}
+
+/** 检查旧图片的 file_id。超限返回 null 以触发补传，无法读取原件时保留原 ID。 */
+export const checkImageFileIds = async (files: FileAttachment[], signal: AbortSignal) => {
+  const checked = new Map<string, string | null>()
+  for (const file of files) {
+    if (!file.isImage || !file.serverId || file.imageSizeChecked || checked.has(file.id)) {
+      continue
+    }
+    throwIfAborted(signal)
+    const oversized = await loadFile(file.id)
+      .then((blob) => blob && isUploadImageOversized(blob))
+      .catch(() => undefined)
+    if (oversized === undefined) {
+      continue
+    }
+    throwIfAborted(signal)
+    const task = useUploads.getState().tasks[file.id]
+    if (oversized && task?.status === 'done' && task.serverId === file.serverId) {
+      cancelUpload(file.id)
+    }
+    checked.set(file.id, oversized ? null : file.serverId)
+  }
+  return checked
 }
 
 /** 图片 OCR 状态：识别中 / 成功拿到文字 / 失败（失败不阻塞发送） */

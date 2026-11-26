@@ -24,6 +24,7 @@ import { CollapsedSider } from '../components/sider/CollapsedSider.js'
 import { closeMobileSider } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
 import { CampusQuickPanel } from '../components/campus/CampusQuickPanel.js'
+import { ImagePreview } from '../components/files/ImagePreview.js'
 import styles from './App.module.css'
 
 export const App = () => {
@@ -134,6 +135,7 @@ export const App = () => {
       </div>
       <SettingsDialog />
       <CampusQuickPanel />
+      <ImagePreview />
       <Toast />
     </>
   )

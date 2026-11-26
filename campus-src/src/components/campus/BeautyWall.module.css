@@ -1,0 +1,224 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto 10px;
+  padding: 8px 12px;
+  width: min(760px, calc(100% - 32px));
+  border: 1px solid rgba(57, 100, 254, 0.18);
+  border-radius: 12px;
+  background: rgba(57, 100, 254, 0.06);
+}
+
+.crown {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 9px;
+  background: rgba(57, 100, 254, 0.12);
+  color: var(--dsw-alias-brand-text);
+}
+
+.text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.title {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.hint {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.wallButton {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(57, 100, 254, 0.35);
+  border-radius: 15px;
+  background: transparent;
+  color: var(--dsw-alias-brand-text);
+  font-size: 12px;
+}
+
+.wallButton:hover:not(:disabled) {
+  background: rgba(57, 100, 254, 0.1);
+}
+
+.wallButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 退出专属会话：低调的灰边按钮，避免和「照片墙」抢注意力 */
+.exitButton {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 15px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.exitButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 94vw);
+  max-height: calc(100vh - 32px);
+  padding: 18px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 18px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.headTitle {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.close:hover {
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.empty {
+  margin: 8px 0 20px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px 14px;
+  padding: 6px 4px 18px;
+  overflow-y: auto;
+}
+
+.polaroid {
+  margin: 0;
+  padding: 6px 6px 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-base);
+  transform: rotate(-1.2deg);
+}
+
+.polaroid:nth-child(2n) {
+  transform: rotate(1.4deg);
+}
+
+.polaroid:nth-child(3n) {
+  transform: rotate(-0.6deg);
+}
+
+.photoButton {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 3px;
+  background: var(--dsw-alias-bg-skeleton);
+}
+
+.photoButton img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--dsw-alias-bg-skeleton);
+}
+
+.caption {
+  padding: 6px 2px 7px;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1510;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.lightbox img {
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+@media (max-width: 560px) {
+  .bar {
+    width: calc(100% - 20px);
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+}

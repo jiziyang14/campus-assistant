@@ -6,6 +6,7 @@ import {
   IconDownloadOutline16,
   IconFollowsystemOutline16,
   IconLightOutline16,
+  IconLoadingOutline16,
   IconSettingsOutline16,
   IconUploadOutline14,
   IconWarningOutline16,
@@ -15,6 +16,7 @@ import {
   clearHistory,
   exportHistory,
   importHistory,
+  mergeImportHistory,
 } from '../../services/chat/backup.js'
 import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
@@ -34,6 +36,7 @@ import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
 import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
 import { DiagnosticsSettings } from './DiagnosticsSettings.js'
+import { DriveBackup } from './DriveBackup.js'
 import styles from './Settings.module.css'
 
 /**
@@ -42,7 +45,9 @@ import styles from './Settings.module.css'
  */
 export const SettingsDialog = () => {
   const open = useSettingsDialog((state) => state.open)
-  return open ? <SettingsContent /> : null
+  // 导入状态放在弹窗外面，关闭设置再打开时还能看到进度
+  const historyImport = useHistoryImport()
+  return open ? <SettingsContent historyImport={historyImport} /> : null
 }
 
 const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode }[] = [
@@ -59,11 +64,14 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
   },
 ]
 
-const SettingsContent = () => {
+const SettingsContent = ({
+  historyImport,
+}: {
+  historyImport: ReturnType<typeof useHistoryImport>
+}) => {
   const t = useTranslate()
   // 打开时按调用方指定的分组选中，之后在弹窗内切换
   const [section, setSection] = useState(() => useSettingsDialog.getState().section)
-  const historyImport = useHistoryImport()
   const historyDelete = useHistoryDelete()
   const replacingHistory = useChatStore((state) => state.importingHistory)
   const historyBusy = historyImport.busy || historyDelete.busy || replacingHistory
@@ -76,6 +84,7 @@ const SettingsContent = () => {
         mainClassName={styles.dialogMain}
         onClose={() => {
           if (!historyDelete.busy) {
+            historyImport.dismiss()
             closeSettings()
           }
         }}
@@ -107,6 +116,7 @@ const SettingsContent = () => {
             <>
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <ExportHistory disabled={historyBusy} />
+              <DriveBackup disabled={historyBusy} onPickImport={historyImport.select} />
               <SettingCell
                 label={t('deleteAllSessions')}
                 status={null}
@@ -333,13 +343,22 @@ const ImportConfirm = ({
           <Button variant="outlined" size="m" autoFocus onClick={historyImport.cancel}>
             {t('cancel')}
           </Button>
-          <Button variant="dangerOutlined" size="m" onClick={() => void historyImport.confirm()}>
-            {t('historyImportConfirm')}
+          <Button
+            variant="dangerOutlined"
+            size="m"
+            onClick={() => void historyImport.confirm('overwrite')}
+          >
+            {t('historyImportOverwrite')}
+          </Button>
+          <Button size="m" onClick={() => void historyImport.confirm('merge')}>
+            {t('historyImportMerge')}
           </Button>
         </>
       }
     >
       <div className={styles.importConfirmText}>{t('historyImportConfirmDescription')}</div>
+      <div className={styles.importConfirmText}>{t('historyImportMergeHint')}</div>
+      <div className={styles.importConfirmText}>{t('historyImportOverwriteHint')}</div>
     </Modal>
   )
 }
@@ -438,36 +457,57 @@ const SettingCell = ({
   )
 }
 
-/** 选文件后先提示覆盖；确认后才检查文件并执行导入，任何错误都提示导入失败。 */
+/** 导入选择：合并会保留本机记录，覆盖会先清空；两种方式都在确认后执行。 */
 const useHistoryImport = () => {
   const [file, setFile] = useState<File | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState<{ processed: number; total?: number } | null>(null)
   const [status, setStatus] = useState<Status>(null)
   const importing = useRef(false)
 
-  const confirm = async () => {
+  const confirm = async (mode: 'merge' | 'overwrite') => {
     if (!file || importing.current) {
       return
     }
     importing.current = true
     setFile(null)
-    setBusy(true)
+    setProgress({ processed: 0 })
     setStatus(null)
+    const onProgress = (processed: number, total: number) => setProgress({ processed, total })
     try {
-      const count = await importHistory(file)
-      setStatus({ key: count === 1 ? 'historyImportedOne' : 'historyImported', params: { count } })
+      if (mode === 'merge') {
+        const result = await mergeImportHistory(file, onProgress)
+        setStatus({
+          key: 'historyImportMergeResult',
+          params: { added: result.added, skipped: result.skipped },
+        })
+      } else {
+        const count = await importHistory(file, onProgress)
+        setStatus({ key: count === 1 ? 'historyImportedOne' : 'historyImported', params: { count } })
+      }
     } catch {
       setStatus({ key: 'historyImportFailed', error: true })
     } finally {
       importing.current = false
-      setBusy(false)
+      setProgress(null)
     }
   }
 
-  return { file, busy, status, select: setFile, cancel: () => setFile(null), confirm }
+  return {
+    file,
+    busy: progress !== null,
+    progress,
+    status,
+    select: setFile,
+    cancel: () => setFile(null),
+    dismiss: () => {
+      setFile(null)
+      setStatus(null)
+    },
+    confirm,
+  }
 }
 
-/** 导入 = 覆盖：用选中文件替换本地全部会话与附件。 */
+/** 导入 = 合并或覆盖：合并保留本机记录，覆盖用备份替换本地全部会话与附件。 */
 const ImportHistory = ({
   historyImport,
   disabled,
@@ -477,9 +517,11 @@ const ImportHistory = ({
 }) => {
   const t = useTranslate()
   const inputRef = useRef<HTMLInputElement>(null)
+  const { progress } = historyImport
 
   return (
     <SettingCell
+      className={progress ? styles.importing : undefined}
       label={t('historyImport')}
       description={t('historyImportDescription')}
       status={historyImport.status}
@@ -489,11 +531,18 @@ const ImportHistory = ({
             variant="outlined"
             size="m"
             className={clsx(styles.cellButton, styles.uploadButton)}
+            aria-busy={historyImport.busy}
             disabled={disabled}
             onClick={() => inputRef.current?.click()}
           >
-            <IconUploadOutline14 />
-            {t('upload')}
+            {progress ? (
+              <IconLoadingOutline16 />
+            ) : (
+              <>
+                <IconUploadOutline14 />
+                {t('upload')}
+              </>
+            )}
           </Button>
           <input
             ref={inputRef}
@@ -508,6 +557,27 @@ const ImportHistory = ({
               }
             }}
           />
+          {progress?.total !== undefined ? (
+            <div className={styles.importProgress}>
+              <div
+                className={styles.importTrack}
+                role="progressbar"
+                aria-label={t('historyImport')}
+                aria-valuemin={0}
+                aria-valuemax={progress.total}
+                aria-valuenow={progress.processed}
+              >
+                <span
+                  style={{
+                    width: `${progress.total ? (progress.processed / progress.total) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              <span>
+                {progress.processed} / {progress.total}
+              </span>
+            </div>
+          ) : null}
         </>
       }
     />

@@ -1,10 +1,10 @@
 import clsx from 'clsx'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
 import { AppLogo } from '../base/AppLogo.js'
 import { setSiderCollapsed } from '../../services/settings.js'
-import { groupSessions } from '../../services/chat/sessionGroups.js'
+import { groupSessions, filterSessions } from '../../services/chat/sessionGroups.js'
 import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { Button } from '../base/Button.js'
@@ -22,9 +22,18 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const sessions = useChatStore((state) => state.sessions)
   const activeId = useChatStore((state) => state.activeId)
   const [now, setNow] = useState(Date.now)
-  const groups = useMemo(() => groupSessions(sessions, now, t), [sessions, now, t])
+  const [query, setQuery] = useState('')
+  const filtered = useMemo(() => filterSessions(sessions, query), [sessions, query])
+  const groups = useMemo(() => groupSessions(filtered, now, t), [filtered, now, t])
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [deletePending, setDeletePending] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // 打开时把当前会话滚到可视区域，避免在长列表里从顶部一路找
+  useEffect(() => {
+    const active = listRef.current?.querySelector<HTMLElement>('[data-session-active="true"]')
+    active?.scrollIntoView({ block: 'nearest' })
+  }, [activeId, groups])
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
@@ -57,7 +66,10 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         <span className={styles.brandName}>{t('appName')}</span>
       </div>
       <div className={styles.listWrap}>
-        <div className={styles.list}>
+        <div ref={listRef} className={styles.list}>
+          {groups.length === 0 ? (
+            <div className={styles.emptySearch}>{t('sessionSearchEmpty')}</div>
+          ) : null}
           {groups.map((group) => (
             <div key={group.key} className={styles.section}>
               <div className={styles.sectionHeader}>{group.label}</div>
@@ -74,6 +86,34 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         </div>
       </div>
       <div className={styles.bottom}>
+        <label className={styles.searchRow}>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.4" />
+            <path d="m10.6 10.6 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+          <input
+            className={styles.searchInput}
+            value={query}
+            placeholder={t('sessionSearchPlaceholder')}
+            aria-label={t('sessionSearchPlaceholder')}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setQuery('')
+              }
+            }}
+          />
+          {query ? (
+            <button
+              type="button"
+              className={styles.searchClear}
+              aria-label={t('clear')}
+              onClick={() => setQuery('')}
+            >
+              ×
+            </button>
+          ) : null}
+        </label>
         <button
           type="button"
           className={styles.bottomNewChat}
