@@ -168,6 +168,7 @@ export const en = {
   usagePriceLine: 'Input ¥{miss} / M · Output ¥{output} / M',
   usageEstimateNote: 'Estimated from official API prices; public holidays not excluded',
   scrollToLatest: 'Back to latest',
+  sidebarJumpLatest: 'Latest chat',
   usageContextLabel: 'Context used',
   usageContextValue: '{used} / {total}',
   settingsBalance: 'Account balance',

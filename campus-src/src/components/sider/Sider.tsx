@@ -1,11 +1,11 @@
 import clsx from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon } from '../base/icons.js'
+import { IconPanelLeftOutline16, IconSettingsOutline16, NewChatIcon, IconChevronDownOutline14 } from '../base/icons.js'
 import { AppLogo } from '../base/AppLogo.js'
 import { setSiderCollapsed } from '../../services/settings.js'
 import { groupSessions, filterSessions } from '../../services/chat/sessionGroups.js'
-import { newChat, removeSession, useChatStore } from '../../services/chat/store.js'
+import { newChat, removeSession, selectSession, useChatStore } from '../../services/chat/store.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { Button } from '../base/Button.js'
 import { Modal } from '../base/Modal.js'
@@ -27,7 +27,13 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
   const groups = useMemo(() => groupSessions(filtered, now, t), [filtered, now, t])
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
   const [deletePending, setDeletePending] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [showJump, setShowJump] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ startY: number; startTop: number; moved: boolean; pointerId: number } | null>(
+    null
+  )
+  const suppressClickRef = useRef(false)
 
   // 打开时把当前会话滚到可视区域，避免在长列表里从顶部一路找
   useEffect(() => {
@@ -59,6 +65,80 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
     }
   }, [])
 
+  const updateJump = () => {
+    setShowJump((listRef.current?.scrollTop ?? 0) > 120)
+  }
+
+  /** 回到最新：滚到列表顶部并选中最新会话，站在大屏前也不用抬手够顶部 */
+  const jumpToLatest = () => {
+    listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+    const newest = sessions[0]
+    if (newest && newest.id !== activeId) {
+      selectSession(newest.id)
+    }
+  }
+
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    // 触屏交给原生滚动，这里只处理鼠标拖拽
+    if (event.pointerType !== 'mouse' || event.button !== 0) {
+      return
+    }
+    const el = listRef.current
+    if (!el) {
+      return
+    }
+    dragRef.current = {
+      startY: event.clientY,
+      startTop: el.scrollTop,
+      moved: false,
+      pointerId: event.pointerId,
+    }
+  }
+
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current
+    const el = listRef.current
+    if (!drag || !el || event.pointerId !== drag.pointerId) {
+      return
+    }
+    const delta = event.clientY - drag.startY
+    if (!drag.moved) {
+      if (Math.abs(delta) < 4) {
+        return
+      }
+      drag.moved = true
+      setDragging(true)
+      try {
+        el.setPointerCapture(event.pointerId)
+      } catch {
+        // 指针已释放时忽略
+      }
+    }
+    el.scrollTop = drag.startTop - delta
+    updateJump()
+  }
+
+  const endDrag = () => {
+    const drag = dragRef.current
+    if (!drag) {
+      return
+    }
+    if (drag.moved) {
+      // 拖拽结束时浏览器还会派发一次 click，拦掉避免误选会话
+      suppressClickRef.current = true
+      window.setTimeout(() => {
+        suppressClickRef.current = false
+      }, 0)
+    }
+    dragRef.current = null
+    setDragging(false)
+    try {
+      listRef.current?.releasePointerCapture(drag.pointerId)
+    } catch {
+      // 已经释放时忽略
+    }
+  }
+
   return (
     <div className={clsx(styles.sider, mobile && styles.mobile)}>
       <div className={styles.brand}>
@@ -66,7 +146,21 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
         <span className={styles.brandName}>{t('appName')}</span>
       </div>
       <div className={styles.listWrap}>
-        <div ref={listRef} className={styles.list}>
+        <div
+          ref={listRef}
+          className={clsx(styles.list, dragging && styles.listDragging)}
+          onScroll={updateJump}
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onClickCapture={(event) => {
+            if (suppressClickRef.current) {
+              event.preventDefault()
+              event.stopPropagation()
+            }
+          }}
+        >
           {groups.length === 0 ? (
             <div className={styles.emptySearch}>{t('sessionSearchEmpty')}</div>
           ) : null}
@@ -84,6 +178,14 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
             </div>
           ))}
         </div>
+        {showJump ? (
+          <button type="button" className={styles.jumpLatest} onClick={jumpToLatest}>
+            <span className={styles.jumpIcon}>
+              <IconChevronDownOutline14 />
+            </span>
+            {t('sidebarJumpLatest')}
+          </button>
+        ) : null}
       </div>
       <div className={styles.bottom}>
         <label className={styles.searchRow}>

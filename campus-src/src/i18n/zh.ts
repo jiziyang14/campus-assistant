@@ -160,6 +160,7 @@ export const zh = {
   usagePriceLine: '输入 ¥{miss} / 百万 · 输出 ¥{output} / 百万',
   usageEstimateNote: '按官方 API 价格估算，未扣除法定节假日',
   scrollToLatest: '回到底部',
+  sidebarJumpLatest: '回到最新',
   usageContextLabel: '上下文占用',
   usageContextValue: '{used} / {total}',
   settingsBalance: '账户余额',

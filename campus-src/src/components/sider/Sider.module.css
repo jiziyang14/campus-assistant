@@ -152,7 +152,51 @@
   margin: 0 -2px;
   padding: 0 2px;
   overflow-y: auto;
-  scrollbar-color: var(--scroll-color) transparent;
+  scrollbar-width: none;
+}
+
+/* 侧栏不再显示滚动条，靠滚轮 / 触屏 / 拖拽滚动 */
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.listDragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.jumpLatest {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 100px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateX(-50%);
+  cursor: pointer;
+  user-select: none;
+}
+
+.jumpLatest:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.jumpIcon {
+  display: inline-flex;
+  transform: rotate(180deg);
 }
 
 .section {
@@ -366,6 +410,13 @@
   .bottomNewChat {
     min-height: 52px;
     font-size: 15px;
+  }
+
+  .jumpLatest {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 14px;
+    bottom: 10px;
   }
 
   .settings {
