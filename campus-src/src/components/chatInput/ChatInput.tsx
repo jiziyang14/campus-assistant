@@ -193,6 +193,11 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
       }}
     >
       <DraftAttachments items={attachments} onRetry={retryFile} onRemove={removeFile} />
+      {voice.interim ? (
+        <div className={styles.voiceInterim} aria-live="polite">
+          {voice.interim}
+        </div>
+      ) : null}
       <div className={styles.textareaWrapper}>
         <textarea
           ref={textareaRef}

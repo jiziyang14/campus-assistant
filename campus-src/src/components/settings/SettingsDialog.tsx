@@ -26,6 +26,7 @@ import {
   isChineseBrowser,
   setLocale,
   setLocation,
+  setRealtimeVoice,
   setThemePreference,
   setTtsVoice,
   useSettings,
@@ -113,6 +114,7 @@ const SettingsContent = ({
               <ThemeSetting />
               <LocaleSetting />
               <TtsVoiceSetting />
+              <RealtimeVoiceSetting />
               <LocationSetting />
               <BalanceSetting />
             </>
@@ -479,8 +481,7 @@ const LocaleSetting = () => {
   )
 }
 
-/** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */
-const TtsVoiceSetting = () => {
+/** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */const TtsVoiceSetting = () => {
   const t = useTranslate()
   const ttsVoice = useSettings((state) => state.ttsVoice)
   return (
@@ -496,6 +497,30 @@ const TtsVoiceSetting = () => {
             { value: 'tide', label: t('settingsTtsVoiceTide') },
           ]}
           onChange={setTtsVoice}
+        />
+      }
+    />
+  )
+}
+
+/** 实时语音：默认开启，用浏览器识别边说边出字，失败自动回退 DeepSeek 整段转写 */
+const RealtimeVoiceSetting = () => {
+  const t = useTranslate()
+  const realtimeVoice = useSettings((state) => state.realtimeVoice)
+  return (
+    <SettingCell
+      label={t('settingsRealtimeVoice')}
+      description={t('settingsRealtimeVoiceDescription')}
+      status={null}
+      action={
+        <Select
+          ariaLabel={t('settingsRealtimeVoice')}
+          value={realtimeVoice ? 'on' : 'off'}
+          options={[
+            { value: 'on', label: t('settingsRealtimeVoiceOn') },
+            { value: 'off', label: t('settingsRealtimeVoiceOff') },
+          ]}
+          onChange={(value) => setRealtimeVoice(value === 'on')}
         />
       }
     />

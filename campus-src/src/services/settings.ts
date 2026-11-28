@@ -17,6 +17,8 @@ type Settings = {
   thinking: boolean
   search: boolean
   siderCollapsed: boolean
+  /** 实时语音：用浏览器识别边说边出字，失败自动回退 DeepSeek 整段转写 */
+  realtimeVoice: boolean
 }
 
 const KEYS = {
@@ -28,6 +30,7 @@ const KEYS = {
   thinking: 'chat-demo:thinking',
   search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
+  realtimeVoice: 'chat-demo:realtime-voice',
 } as const
 
 const read = (key: string) => {
@@ -104,6 +107,8 @@ export const useSettings = create<Settings>(() => ({
   thinking: read(KEYS.thinking) === 'true',
   search: read(KEYS.search) === 'true',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
+  // 默认开启实时语音，关闭时退回整段转写
+  realtimeVoice: read(KEYS.realtimeVoice) !== 'false',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -140,4 +145,9 @@ export const setSearch = (search: boolean) => {
 export const setSiderCollapsed = (siderCollapsed: boolean) => {
   write(KEYS.siderCollapsed, String(siderCollapsed))
   useSettings.setState({ siderCollapsed })
+}
+
+export const setRealtimeVoice = (realtimeVoice: boolean) => {
+  write(KEYS.realtimeVoice, String(realtimeVoice))
+  useSettings.setState({ realtimeVoice })
 }

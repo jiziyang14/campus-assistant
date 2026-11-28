@@ -181,6 +181,12 @@ export const en = {
   settingsBalanceTotal: 'Total',
   settingsBalanceGranted: 'Granted',
   settingsBalanceToppedUp: 'Topped up',
+  settingsRealtimeVoice: 'Realtime voice',
+  settingsRealtimeVoiceOn: 'On (live transcription)',
+  settingsRealtimeVoiceOff: 'Off (full-clip transcription)',
+  settingsRealtimeVoiceDescription:
+    'Uses the browser speech service for live text; audio goes to the browser vendor. Falls back to DeepSeek transcription when unavailable.',
+  voiceRealtimeFallback: 'Realtime speech unavailable, switched to full-clip transcription',
   apiKeySettingLabel: 'API Key',
   apiKeyStatusConfigured: 'Configured. You can chat now; click the button to replace the key.',
   apiKeyStatusMissing: 'Not configured. Enter your DeepSeek API Key to start chatting.',

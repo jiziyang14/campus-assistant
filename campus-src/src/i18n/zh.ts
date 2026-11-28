@@ -173,6 +173,12 @@ export const zh = {
   settingsBalanceTotal: '总余额',
   settingsBalanceGranted: '赠金',
   settingsBalanceToppedUp: '充值',
+  settingsRealtimeVoice: '实时语音',
+  settingsRealtimeVoiceOn: '开启（边说边出字）',
+  settingsRealtimeVoiceOff: '关闭（整段转写）',
+  settingsRealtimeVoiceDescription:
+    '使用浏览器识别实时出字，音频会发送给浏览器厂商；网络或服务不可用时自动改用 DeepSeek 整段转写。',
+  voiceRealtimeFallback: '实时识别不可用，已切换为整段转写',
   apiKeySettingLabel: 'API Key',
   apiKeyStatusConfigured: '已配置，可直接对话；需要换 Key 时点右侧按钮',
   apiKeyStatusMissing: '未配置，填写 DeepSeek API Key 后即可使用',
