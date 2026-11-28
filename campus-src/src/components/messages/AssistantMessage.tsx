@@ -2,6 +2,7 @@ import { useTranslate } from '../../i18n/index.js'
 import clsx from 'clsx'
 import { memo, useMemo, useState } from 'react'
 import { IconRefreshOutline16, IconWarningOutline16 } from '../base/icons.js'
+import { openSettings } from '../settings/settingsDialogState.js'
 import { describeReply } from '../../services/chat/describe.js'
 import { canContinueReply } from '../../services/chat/reply.js'
 import { continueReply, regenerateReply } from '../../services/chat/store.js'
@@ -17,6 +18,7 @@ import { DeckViewer } from '../campus/DeckViewer.js'
 import { ReadAloudButton } from './ReadAloudButton.js'
 import { CopyButton } from './CopyButton.js'
 import { ReplyArea } from './ReplyArea.js'
+import { UsageInfo } from './UsageInfo.js'
 import { useReplyView } from './useReplyView.js'
 import {
   BranchSwitcher,
@@ -115,6 +117,17 @@ export const AssistantMessage = memo(function AssistantMessage({
                   {t('topUp')}
                 </a>
               </>
+            ) : notice.action === 'apiKey' ? (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className={styles.noticeAction}
+                  onClick={() => openSettings('general')}
+                >
+                  {t('apiKeyGoSettings')}
+                </button>
+              </>
             ) : null}
           </span>
         </div>
@@ -166,6 +179,14 @@ export const AssistantMessage = memo(function AssistantMessage({
                 regenerateReply(sessionId, message.id)
               }}
             />
+            {/* 导入的老对话没有 usage，只有本机产生的回答才显示用量图标 */}
+            {message.usage ? (
+              <UsageInfo
+                usage={message.usage}
+                model={message.model ?? 'deepseek-flash'}
+                at={message.createdAt}
+              />
+            ) : null}
           </div>
           {isLast && canContinueReply(message) ? (
             <Button

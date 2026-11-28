@@ -223,6 +223,78 @@ const safeBackupName = (value) => {
 
 const backupDirOf = (drive) => `${drive}\\${BACKUP_DIR_NAME}`
 
+/** 读取 config.json 里已有的配置对象，用于保存 API Key 时保留其他字段 */
+const readConfigObject = () => {
+  try {
+    const text = fs.readFileSync(CONFIG_PATH, 'utf8').replace(/^\uFEFF/, '')
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * 应用内 API Key 设置：公开分发的 exe 不嵌 Key，首次使用时由用户自己填写，
+ * 保存到 exe 同目录的 config.json（不写日志、不回显）。
+ */
+const handleConfigApi = async (request, response) => {
+  const loaded = loadConfig()
+  if (request.method === 'GET') {
+    sendJson(response, 200, {
+      configured: Boolean(String(loaded.config.apiKey || '').trim()),
+      source: loaded.source,
+      apiBase: String(loaded.config.apiBase || 'https://api.deepseek.com'),
+    })
+    return
+  }
+  if (request.method !== 'POST') {
+    sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Method not allowed' } })
+    return
+  }
+  let body = null
+  try {
+    body = JSON.parse(String((await readRawBody(request, 64 * 1024)) || '{}'))
+  } catch {
+    body = null
+  }
+  const apiKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
+  if (apiKey.length < 8 || apiKey.length > 256 || /\s/.test(apiKey)) {
+    sendJson(response, 400, { error: { code: 'api_key_invalid', message: 'API Key 格式不正确。' } })
+    return
+  }
+  const apiBase =
+    (body && typeof body.apiBase === 'string' ? body.apiBase.trim() : '') ||
+    String(loaded.config.apiBase || 'https://api.deepseek.com')
+  let parsedBase = null
+  try {
+    parsedBase = new URL(apiBase)
+  } catch {
+    parsedBase = null
+  }
+  if (!parsedBase || (parsedBase.protocol !== 'https:' && parsedBase.protocol !== 'http:')) {
+    sendJson(response, 400, {
+      error: { code: 'api_base_invalid', message: 'API 地址只支持 http/https。' },
+    })
+    return
+  }
+  try {
+    await fs.promises.mkdir(path.dirname(CONFIG_PATH), { recursive: true })
+    const next = { ...readConfigObject(), apiKey, apiBase }
+    await fs.promises.writeFile(CONFIG_PATH, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
+    configCache = null
+    log('info', '已通过应用设置保存 API Key', { path: CONFIG_PATH })
+    sendJson(response, 200, { configured: true, source: 'file', apiBase })
+  } catch (error) {
+    sendJson(response, 500, {
+      error: {
+        code: 'config_write_failed',
+        message: `无法写入配置文件：${error instanceof Error ? error.message : String(error)}`,
+      },
+    })
+  }
+}
+
 const listBackups = async (drive) => {
   const dir = backupDirOf(drive)
   let entries
@@ -518,6 +590,11 @@ const route = async (request, response) => {
     return
   }
 
+  if (url.pathname === '/campus/api/config') {
+    await handleConfigApi(request, response)
+    return
+  }
+
   if (url.pathname.startsWith('/campus/api/')) {
     await handleDriveBackup(request, response, url)
     return
@@ -525,6 +602,7 @@ const route = async (request, response) => {
 
   if (
     url.pathname === '/models' ||
+    url.pathname === '/user/balance' ||
     url.pathname.startsWith('/anthropic/') ||
     url.pathname.startsWith('/v1/')
   ) {

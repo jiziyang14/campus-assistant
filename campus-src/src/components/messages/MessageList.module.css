@@ -1,3 +1,11 @@
+.viewport {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .container {
   flex: 1;
   min-height: 0;
@@ -34,4 +42,52 @@
   max-width: calc(100% - 40px);
   margin: 0 auto;
   padding-bottom: 24px;
+}
+
+/* 留出滚动余量：最后一条回答可以滚到输入框上方，操作栏不会被挡住 */
+.spacer {
+  flex: none;
+  height: clamp(96px, 22vh, 260px);
+}
+
+.scrollButton {
+  position: absolute;
+  right: 24px;
+  bottom: 132px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 100px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+
+.scrollButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+@media not all and (min-width: 768px) {
+  .spacer {
+    height: clamp(64px, 16vh, 160px);
+  }
+
+  .scrollButton {
+    right: 12px;
+    bottom: 104px;
+    height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
 }

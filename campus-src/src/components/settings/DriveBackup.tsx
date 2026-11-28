@@ -20,6 +20,10 @@ import styles from './Settings.module.css'
 type Status = { text: string; error?: boolean } | null
 type Mode = 'save' | 'import' | null
 
+// 接口存在性与盘符在模块内缓存：再次打开设置时立即渲染，不用等 PowerShell 查询
+let cachedAvailable = true
+let cachedDrives: DriveInfo[] = []
+
 /**
  * U 盘直连备份：设置页里的「保存到 U 盘」「从 U 盘导入」。
  * 依赖打包后本地服务的 /campus/api 接口；开发服务器下没有该接口时整块隐藏，
@@ -35,8 +39,8 @@ export const DriveBackup = ({
 }) => {
   const t = useTranslate()
   const locale = useSettings((state) => state.locale)
-  const [available, setAvailable] = useState<boolean | null>(null)
-  const [drives, setDrives] = useState<DriveInfo[]>([])
+  const [available, setAvailable] = useState(cachedAvailable)
+  const [drives, setDrives] = useState<DriveInfo[]>(cachedDrives)
   const [drivesLoading, setDrivesLoading] = useState(false)
   const [mode, setMode] = useState<Mode>(null)
   const [drive, setDrive] = useState('')
@@ -51,6 +55,8 @@ export const DriveBackup = ({
     setDrivesLoading(true)
     try {
       const result = await listDrives()
+      cachedAvailable = true
+      cachedDrives = result
       setDrives(result)
       setAvailable(true)
       setDrive((current) =>
@@ -60,6 +66,7 @@ export const DriveBackup = ({
       )
       return result
     } catch {
+      cachedAvailable = false
       setAvailable(false)
       return []
     } finally {

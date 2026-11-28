@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconDarkOutline16,
   IconDataOutline16,
@@ -18,6 +18,8 @@ import {
   importHistory,
   mergeImportHistory,
 } from '../../services/chat/backup.js'
+import { currencySymbol, fetchBalance } from '../../services/api/balance.js'
+import { fetchServerConfig, saveServerApiKey } from '../../services/api/serverConfig.js'
 import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
@@ -107,10 +109,12 @@ const SettingsContent = ({
         <div role="tabpanel" className={styles.content}>
           {section === 'general' ? (
             <>
+              <ApiKeySetting />
               <ThemeSetting />
               <LocaleSetting />
               <TtsVoiceSetting />
               <LocationSetting />
+              <BalanceSetting />
             </>
           ) : section === 'data' ? (
             <>
@@ -276,6 +280,178 @@ const LocationSetting = () => {
             />
           )}
         </div>
+      }
+    />
+  )
+}
+
+/** 应用内填写 API Key：公开分发的 exe 不嵌 Key，保存到本机 config.json */
+const ApiKeySetting = () => {
+  const t = useTranslate()
+  const [status, setStatus] = useState<'loading' | 'configured' | 'missing' | 'unsupported'>(
+    'loading'
+  )
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    fetchServerConfig()
+      .then((config) => {
+        if (active) {
+          setStatus(config.configured ? 'configured' : 'missing')
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setStatus('unsupported')
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // 开发服务器没有本地配置接口时不展示，避免干扰
+  if (status === 'unsupported') {
+    return null
+  }
+
+  const save = async () => {
+    const apiKey = value.trim()
+    if (!apiKey || saving) {
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await saveServerApiKey(apiKey)
+      setStatus('configured')
+      setEditing(false)
+      setValue('')
+      showToast({ key: 'apiKeySavedToast' })
+    } catch (e) {
+      setError(t('apiKeySaveFailed', { message: e instanceof Error ? e.message : String(e) }))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const description =
+    status === 'loading'
+      ? t('apiKeyStatusLoading')
+      : status === 'configured'
+        ? t('apiKeyStatusConfigured')
+        : t('apiKeyStatusMissing')
+
+  return (
+    <div className={styles.cell}>
+      <div className={styles.apiKey}>
+        <div className={styles.row}>
+          <div className={styles.text}>
+            <div className={styles.label}>{t('apiKeySettingLabel')}</div>
+            <div className={styles.description}>{description}</div>
+          </div>
+          <Button
+            variant="outlined"
+            size="m"
+            className={styles.cellButton}
+            disabled={status === 'loading'}
+            onClick={() => setEditing((current) => !current)}
+          >
+            {status === 'configured' ? t('apiKeyEdit') : t('apiKeySaveButton')}
+          </Button>
+        </div>
+        {editing ? (
+          <div className={styles.apiKeyInput}>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={t('apiKeyPlaceholder')}
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                  void save()
+                }
+              }}
+            />
+            <span className={styles.divider} />
+            <button
+              type="button"
+              className={styles.confirm}
+              disabled={!value.trim() || saving}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void save()}
+            >
+              {saving ? t('apiKeyVerifying') : t('confirm')}
+            </button>
+          </div>
+        ) : null}
+        {error ? <div className={styles.error}>{error}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+/** 账户余额：同源代理查询，本地服务端注入 Key，前端不接触真实密钥 */
+const BalanceSetting = () => {
+  const t = useTranslate()
+  const [state, setState] = useState<{ status: 'loading' | 'done' | 'error'; text?: string }>({
+    status: 'loading',
+  })
+  const activeRef = useRef(true)
+
+  const load = useCallback(async () => {
+    setState({ status: 'loading' })
+    try {
+      const balance = await fetchBalance()
+      const info =
+        balance.balance_infos?.find((item) => item.currency === 'CNY') ?? balance.balance_infos?.[0]
+      if (!info) {
+        throw new Error('empty balance')
+      }
+      const symbol = currencySymbol(info.currency)
+      if (activeRef.current) {
+        setState({
+          status: 'done',
+          text: `${t('settingsBalanceTotal')} ${symbol}${info.total_balance} · ${t('settingsBalanceGranted')} ${symbol}${info.granted_balance} · ${t('settingsBalanceToppedUp')} ${symbol}${info.topped_up_balance}`,
+        })
+      }
+    } catch {
+      if (activeRef.current) {
+        setState({ status: 'error', text: t('settingsBalanceUnavailable') })
+      }
+    }
+  }, [t])
+
+  useEffect(() => {
+    activeRef.current = true
+    void load()
+    return () => {
+      activeRef.current = false
+    }
+  }, [load])
+
+  return (
+    <SettingCell
+      label={t('settingsBalance')}
+      status={null}
+      description={state.status === 'loading' ? t('settingsBalanceLoading') : state.text}
+      action={
+        <Button
+          variant="outlined"
+          size="m"
+          className={styles.cellButton}
+          disabled={state.status === 'loading'}
+          onClick={() => void load()}
+        >
+          {t('settingsBalanceRefresh')}
+        </Button>
       }
     />
   )

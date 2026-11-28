@@ -156,6 +156,77 @@ const isAllowedOrigin = (request) => {
   }
 }
 
+const readConfigObject = () => {
+  try {
+    const text = fsSync.readFileSync(CONFIG_PATH, 'utf8').replace(/^\uFEFF/, '')
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+/** 应用内 API Key 设置：保存到本目录 config.json，GET 只返回是否已配置 */
+const handleConfigApi = async (request, response) => {
+  const loaded = readConfig()
+  if (request.method === 'GET') {
+    sendJson(response, 200, {
+      configured: Boolean(
+        String(loaded.config.apiKey || process.env.DEEPSEEK_API_KEY || '').trim()
+      ),
+      source: loaded.source,
+      apiBase: String(
+        loaded.config.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com'
+      ),
+    })
+    return
+  }
+  if (request.method !== 'POST') {
+    sendJson(response, 405, { error: { code: 'method_not_allowed', message: 'Method not allowed' } })
+    return
+  }
+  let body = null
+  try {
+    body = JSON.parse(String((await readRawBody(request)) || '{}'))
+  } catch {
+    body = null
+  }
+  const apiKey = body && typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
+  if (apiKey.length < 8 || apiKey.length > 256 || /\s/.test(apiKey)) {
+    sendJson(response, 400, { error: { code: 'api_key_invalid', message: 'API Key 格式不正确。' } })
+    return
+  }
+  const apiBase =
+    (body && typeof body.apiBase === 'string' ? body.apiBase.trim() : '') ||
+    String(loaded.config.apiBase || process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com')
+  let parsedBase = null
+  try {
+    parsedBase = new URL(apiBase)
+  } catch {
+    parsedBase = null
+  }
+  if (!parsedBase || (parsedBase.protocol !== 'https:' && parsedBase.protocol !== 'http:')) {
+    sendJson(response, 400, {
+      error: { code: 'api_base_invalid', message: 'API 地址只支持 http/https。' },
+    })
+    return
+  }
+  try {
+    const next = { ...readConfigObject(), apiKey, apiBase }
+    await fs.writeFile(CONFIG_PATH, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
+    configCache = null
+    log('info', '已通过应用设置保存 API Key')
+    sendJson(response, 200, { configured: true, source: 'file', apiBase })
+  } catch (error) {
+    sendJson(response, 500, {
+      error: {
+        code: 'config_write_failed',
+        message: `无法写入配置文件：${error instanceof Error ? error.message : String(error)}`,
+      },
+    })
+  }
+}
+
 const proxy = async (request, response, url) => {
   const loaded = readConfig()
   const apiKey = String(loaded.config.apiKey || process.env.DEEPSEEK_API_KEY || '').trim()
@@ -269,8 +340,14 @@ const route = async (request, response) => {
     return
   }
 
+  if (url.pathname === '/campus/api/config') {
+    await handleConfigApi(request, response)
+    return
+  }
+
   if (
     url.pathname === '/models' ||
+    url.pathname === '/user/balance' ||
     url.pathname.startsWith('/anthropic/') ||
     url.pathname.startsWith('/v1/')
   ) {

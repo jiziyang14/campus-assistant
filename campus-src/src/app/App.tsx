@@ -17,6 +17,8 @@ import { Welcome } from '../components/session/Welcome.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
 import { Toast } from '../components/base/Toast.js'
 import { showToast } from '../components/base/toastState.js'
+import { fetchServerConfig } from '../services/api/serverConfig.js'
+import { openSettings } from '../components/settings/settingsDialogState.js'
 import { onUploadNotice } from '../services/attachments.js'
 import { Button } from '../components/base/Button.js'
 import { stopReadAloud } from '../services/speech/readAloud.js'
@@ -72,6 +74,32 @@ export const App = () => {
 
   useEffect(() => {
     void initChat()
+  }, [])
+
+  // 公开版 exe 不内置 Key：首次使用发现未配置时，直接打开设置让用户填写
+  useEffect(() => {
+    let active = true
+    fetchServerConfig()
+      .then((config) => {
+        if (!active || config.configured) {
+          return
+        }
+        try {
+          if (sessionStorage.getItem('chat-demo:apikey-prompted') === '1') {
+            return
+          }
+          sessionStorage.setItem('chat-demo:apikey-prompted', '1')
+        } catch {
+          // 存储不可用时只在本次打开提示一次
+        }
+        openSettings('general')
+      })
+      .catch(() => {
+        // 没有本地配置接口（开发服务器）时静默跳过
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   return (

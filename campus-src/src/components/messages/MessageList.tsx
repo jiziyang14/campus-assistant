@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useIsMobile } from '../../app/viewport.js'
+import { useTranslate } from '../../i18n/index.js'
+import { IconChevronDownOutline14 } from '../base/icons.js'
 import {
   buildMessageVersions,
   getVisibleMessages,
@@ -42,12 +44,14 @@ export const MessageList = ({
   streaming: boolean
   footer: React.ReactNode
 }) => {
+  const t = useTranslate()
   const isMobile = useIsMobile()
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const stickyRef = useRef(true)
   const scrollTopRef = useRef(0)
   const restoreScrollRef = useRef<{ messageId: string; top: number } | null>(null)
+  const [atBottom, setAtBottom] = useState(true)
   const messages = getVisibleMessages(session)
   const [previousVersions, setPreviousVersions] = useState(() =>
     buildMessageVersions(session, new Map())
@@ -63,6 +67,17 @@ export const MessageList = ({
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
     if (el && stickyRef.current) {
+      el.scrollTop = el.scrollHeight
+      scrollTopRef.current = el.scrollTop
+    }
+  }, [])
+
+  /** 「回到底部」按钮：无视当前跟随状态，直接滚到最新并恢复自动跟随 */
+  const jumpToLatest = useCallback(() => {
+    stickyRef.current = true
+    setAtBottom(true)
+    const el = scrollRef.current
+    if (el) {
       el.scrollTop = el.scrollHeight
       scrollTopRef.current = el.scrollTop
     }
@@ -133,6 +148,7 @@ export const MessageList = ({
       } else if (el.scrollTop < scrollTopRef.current) {
         stickyRef.current = false
       }
+      setAtBottom((current) => (current === nearBottom ? current : nearBottom))
       scrollTopRef.current = el.scrollTop
     }
     el.addEventListener('scroll', onScroll, { passive: true })
@@ -143,38 +159,53 @@ export const MessageList = ({
   const uploadRetryId = getUploadRetryId(messages, streaming)
   return (
     <ScrollToBottomContext.Provider value={scrollToBottom}>
-      <div ref={isMobile ? undefined : scrollRef} className={styles.container}>
-        <div ref={isMobile ? scrollRef : undefined} className={styles.scroll}>
-          <div ref={contentRef} className={styles.column}>
-            {messages.map((message, index) =>
-              message.role === 'user' ? (
-                <UserMessage
-                  key={message.id}
-                  sessionId={session.id}
-                  message={message}
-                  retryUploadId={uploadRetryId}
-                  isFirst={index === 0}
-                  isLast={index === lastIndex || index === lastIndex - 1}
-                  busy={streaming}
-                  versions={versions.get(message.id) ?? EMPTY_VERSIONS}
-                  onSelectVersion={selectVersion}
-                />
-              ) : (
-                <AssistantMessage
-                  key={message.id}
-                  sessionId={session.id}
-                  message={message}
-                  isLast={index === lastIndex}
-                  streaming={streaming && index === lastIndex}
-                  busy={streaming}
-                  versions={versions.get(message.id) ?? EMPTY_VERSIONS}
-                  onSelectVersion={selectVersion}
-                />
-              )
-            )}
+      <div className={styles.viewport}>
+        <div ref={isMobile ? undefined : scrollRef} className={styles.container}>
+          <div ref={isMobile ? scrollRef : undefined} className={styles.scroll}>
+            <div ref={contentRef} className={styles.column}>
+              {messages.map((message, index) =>
+                message.role === 'user' ? (
+                  <UserMessage
+                    key={message.id}
+                    sessionId={session.id}
+                    message={message}
+                    retryUploadId={uploadRetryId}
+                    isFirst={index === 0}
+                    isLast={index === lastIndex || index === lastIndex - 1}
+                    busy={streaming}
+                    versions={versions.get(message.id) ?? EMPTY_VERSIONS}
+                    onSelectVersion={selectVersion}
+                  />
+                ) : (
+                  <AssistantMessage
+                    key={message.id}
+                    sessionId={session.id}
+                    message={message}
+                    isLast={index === lastIndex}
+                    streaming={streaming && index === lastIndex}
+                    busy={streaming}
+                    versions={versions.get(message.id) ?? EMPTY_VERSIONS}
+                    onSelectVersion={selectVersion}
+                  />
+                )
+              )}
+            </div>
+            {/* 底部留白：让最后一条回答能滚到输入框上方，而不是卡在输入框下 */}
+            <div className={styles.spacer} aria-hidden="true" />
           </div>
+          {footer}
         </div>
-        {footer}
+        {!atBottom ? (
+          <button
+            type="button"
+            className={styles.scrollButton}
+            aria-label={t('scrollToLatest')}
+            onClick={jumpToLatest}
+          >
+            <IconChevronDownOutline14 />
+            <span>{t('scrollToLatest')}</span>
+          </button>
+        ) : null}
       </div>
     </ScrollToBottomContext.Provider>
   )
