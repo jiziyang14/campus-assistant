@@ -25,6 +25,8 @@ import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
   isChineseBrowser,
+  setAutoBackup,
+  setAutoBackupMerge,
   setLocale,
   setLocation,
   setRealtimeVoice,
@@ -529,25 +531,59 @@ const RealtimeVoiceSetting = () => {
   )
 }
 
-/** U 盘自动备份的只读状态，避免用户以为历史还停留在手动导出 */
+/** U 盘自动备份：总开关；开启后才有「无感合并」（新设备自动恢复）选项 */
 const AutoBackupSetting = () => {
   const t = useTranslate()
   const locale = useSettings((state) => state.locale)
-  const [summary] = useState(getAutoBackupSummary)
+  const autoBackup = useSettings((state) => state.autoBackup)
+  const autoBackupMerge = useSettings((state) => state.autoBackupMerge)
+  const summary = getAutoBackupSummary()
   return (
-    <SettingCell
-      label={t('autoBackupLabel')}
-      status={null}
-      description={
-        summary
-          ? t('autoBackupLast', {
-              time: new Date(summary.at).toLocaleString(locale),
-              drive: summary.drive,
-            })
-          : t('autoBackupHint')
-      }
-      action={null}
-    />
+    <>
+      <SettingCell
+        label={t('autoBackupLabel')}
+        status={null}
+        description={
+          autoBackup
+            ? summary
+              ? t('autoBackupLast', {
+                  time: new Date(summary.at).toLocaleString(locale),
+                  drive: summary.drive,
+                })
+              : t('autoBackupHint')
+            : t('autoBackupDisabledHint')
+        }
+        action={
+          <Select
+            ariaLabel={t('autoBackupLabel')}
+            value={autoBackup ? 'on' : 'off'}
+            options={[
+              { value: 'on', label: t('autoBackupOn') },
+              { value: 'off', label: t('autoBackupOff') },
+            ]}
+            onChange={(value) => setAutoBackup(value === 'on')}
+          />
+        }
+      />
+      {autoBackup ? (
+        <SettingCell
+          label={t('autoBackupMergeLabel')}
+          description={t('autoBackupMergeDescription')}
+          status={null}
+          action={
+            <Select
+              ariaLabel={t('autoBackupMergeLabel')}
+              value={autoBackupMerge ? 'on' : 'off'}
+              options={[
+                { value: 'on', label: t('autoBackupOn') },
+                { value: 'off', label: t('autoBackupOff') },
+              ]}
+              onChange={(value) => setAutoBackupMerge(value === 'on')}
+            />
+          }
+        />
+      ) : null}
+    </>
   )
 }
 

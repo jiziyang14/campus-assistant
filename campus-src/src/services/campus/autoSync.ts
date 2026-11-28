@@ -2,6 +2,7 @@ import { showToast } from '../../components/base/toastState.js'
 import { exportHistory, mergeImportHistory } from '../chat/backup.js'
 import { useChatStore } from '../chat/store.js'
 import type { SessionSummary } from '../chat/types.js'
+import { useSettings } from '../settings.js'
 import { listBackups, listDrives, readBackupFromDrive, saveBackupToDrive } from './driveBackup.js'
 
 /**
@@ -75,7 +76,7 @@ let running = false
 let disposed = false
 
 const schedule = (delay = DEBOUNCE_MS) => {
-  if (disposed) {
+  if (disposed || !useSettings.getState().autoBackup) {
     return
   }
   window.clearTimeout(debounceTimer)
@@ -83,7 +84,7 @@ const schedule = (delay = DEBOUNCE_MS) => {
 }
 
 const runBackup = async () => {
-  if (disposed || running) {
+  if (disposed || running || !useSettings.getState().autoBackup) {
     return
   }
   const state = useChatStore.getState()
@@ -129,7 +130,15 @@ const runBackup = async () => {
 const restoreIfEmpty = async () => {
   const meta = readMeta()
   const state = useChatStore.getState()
-  if (meta.restored || !state.ready || state.sessions.length > 0 || state.importingHistory) {
+  const settings = useSettings.getState()
+  if (
+    !settings.autoBackup ||
+    !settings.autoBackupMerge ||
+    meta.restored ||
+    !state.ready ||
+    state.sessions.length > 0 ||
+    state.importingHistory
+  ) {
     return
   }
   try {
@@ -173,6 +182,21 @@ export const startAutoBackup = (): (() => void) => {
       schedule()
     }
   })
+  // 设置里开关自动备份 / 无感合并后立即生效：关闭时取消待执行任务，重新开启时补一次检查
+  const unsubscribeSettings = useSettings.subscribe((state, prev) => {
+    if (!state.autoBackup) {
+      window.clearTimeout(debounceTimer)
+      return
+    }
+    if (!prev.autoBackup || (state.autoBackupMerge && !prev.autoBackupMerge)) {
+      window.setTimeout(() => {
+        void (async () => {
+          await restoreIfEmpty()
+          schedule(0)
+        })()
+      }, 500)
+    }
+  })
   // 启动后先尝试恢复，再做一次内容变化检查；都放在空闲时，避免拖慢首屏
   window.setTimeout(() => {
     void (async () => {
@@ -184,5 +208,6 @@ export const startAutoBackup = (): (() => void) => {
     disposed = true
     window.clearTimeout(debounceTimer)
     unsubscribe()
+    unsubscribeSettings()
   }
 }

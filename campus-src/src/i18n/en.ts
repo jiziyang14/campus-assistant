@@ -159,8 +159,14 @@ export const en = {
   driveBackupReadFailed: 'Failed to read. Replug the USB drive and try again.',
   autoRestoreDone: 'Restored {count} chats from the USB drive',
   autoBackupLabel: 'Automatic USB backup',
-  autoBackupHint:
-    'On: history is written to the USB drive after chats change; an empty install restores from the drive automatically.',
+  autoBackupHint: 'History is written to the USB drive after chats change, no manual export needed.',
+  autoBackupDisabledHint:
+    'Off: nothing is written or restored automatically; manual import/export still works.',
+  autoBackupOn: 'On',
+  autoBackupOff: 'Off',
+  autoBackupMergeLabel: 'Silent merge',
+  autoBackupMergeDescription:
+    'On a new device with no local chats, automatically merge in the USB backup without overwriting local records.',
   autoBackupLast: 'Last automatic backup: {time} ({drive})',
   usageSummary: 'Input {input} · Output {output} · ≈ {cost}',
   usageToggle: 'Turn usage',

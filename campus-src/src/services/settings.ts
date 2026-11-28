@@ -19,6 +19,10 @@ type Settings = {
   siderCollapsed: boolean
   /** 实时语音：用浏览器识别边说边出字，失败自动回退 DeepSeek 整段转写 */
   realtimeVoice: boolean
+  /** U 盘自动备份：对话后静默写入，默认开启 */
+  autoBackup: boolean
+  /** 无感合并：新设备空白时自动从 U 盘恢复并合并，默认开启 */
+  autoBackupMerge: boolean
 }
 
 const KEYS = {
@@ -31,6 +35,8 @@ const KEYS = {
   search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
   realtimeVoice: 'chat-demo:realtime-voice',
+  autoBackup: 'chat-demo:auto-backup-enabled',
+  autoBackupMerge: 'chat-demo:auto-backup-merge',
 } as const
 
 const read = (key: string) => {
@@ -109,6 +115,9 @@ export const useSettings = create<Settings>(() => ({
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
   // 默认开启实时语音，关闭时退回整段转写
   realtimeVoice: read(KEYS.realtimeVoice) !== 'false',
+  // 自动备份与无感合并都默认开启
+  autoBackup: read(KEYS.autoBackup) !== 'false',
+  autoBackupMerge: read(KEYS.autoBackupMerge) !== 'false',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -150,4 +159,14 @@ export const setSiderCollapsed = (siderCollapsed: boolean) => {
 export const setRealtimeVoice = (realtimeVoice: boolean) => {
   write(KEYS.realtimeVoice, String(realtimeVoice))
   useSettings.setState({ realtimeVoice })
+}
+
+export const setAutoBackup = (autoBackup: boolean) => {
+  write(KEYS.autoBackup, String(autoBackup))
+  useSettings.setState({ autoBackup })
+}
+
+export const setAutoBackupMerge = (autoBackupMerge: boolean) => {
+  write(KEYS.autoBackupMerge, String(autoBackupMerge))
+  useSettings.setState({ autoBackupMerge })
 }
