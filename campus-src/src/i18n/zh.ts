@@ -162,7 +162,7 @@ export const zh = {
   scrollToLatest: '回到底部',
   sidebarJumpLatest: '回到最新',
   historySheetTitle: '最近会话',
-  historySheetHint: '下拉拖动 · 点空白收起',
+  historySheetHint: '聊天区按住向下拖 · 点空白收起',
   historySheetEmpty: '还没有会话',
   usageContextLabel: '上下文占用',
   usageContextValue: '{used} / {total}',
