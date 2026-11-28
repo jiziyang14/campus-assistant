@@ -20,6 +20,7 @@ import {
 } from '../../services/chat/backup.js'
 import { currencySymbol, fetchBalance } from '../../services/api/balance.js'
 import { fetchServerConfig, saveServerApiKey } from '../../services/api/serverConfig.js'
+import { getAutoBackupSummary } from '../../services/campus/autoSync.js'
 import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
@@ -123,6 +124,7 @@ const SettingsContent = ({
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <ExportHistory disabled={historyBusy} />
               <DriveBackup disabled={historyBusy} onPickImport={historyImport.select} />
+              <AutoBackupSetting />
               <SettingCell
                 label={t('deleteAllSessions')}
                 status={null}
@@ -523,6 +525,28 @@ const RealtimeVoiceSetting = () => {
           onChange={(value) => setRealtimeVoice(value === 'on')}
         />
       }
+    />
+  )
+}
+
+/** U 盘自动备份的只读状态，避免用户以为历史还停留在手动导出 */
+const AutoBackupSetting = () => {
+  const t = useTranslate()
+  const locale = useSettings((state) => state.locale)
+  const [summary] = useState(getAutoBackupSummary)
+  return (
+    <SettingCell
+      label={t('autoBackupLabel')}
+      status={null}
+      description={
+        summary
+          ? t('autoBackupLast', {
+              time: new Date(summary.at).toLocaleString(locale),
+              drive: summary.drive,
+            })
+          : t('autoBackupHint')
+      }
+      action={null}
     />
   )
 }

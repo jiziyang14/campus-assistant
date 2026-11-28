@@ -157,6 +157,11 @@ export const en = {
   driveBackupSaving: 'Writing to USB drive…',
   driveBackupLoading: 'Reading USB drive…',
   driveBackupReadFailed: 'Failed to read. Replug the USB drive and try again.',
+  autoRestoreDone: 'Restored {count} chats from the USB drive',
+  autoBackupLabel: 'Automatic USB backup',
+  autoBackupHint:
+    'On: history is written to the USB drive after chats change; an empty install restores from the drive automatically.',
+  autoBackupLast: 'Last automatic backup: {time} ({drive})',
   usageSummary: 'Input {input} · Output {output} · ≈ {cost}',
   usageToggle: 'Turn usage',
   usageInputLabel: 'Input',

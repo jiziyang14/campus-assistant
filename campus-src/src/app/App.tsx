@@ -27,6 +27,7 @@ import { closeMobileSider } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
 import { CampusQuickPanel } from '../components/campus/CampusQuickPanel.js'
 import { ImagePreview } from '../components/files/ImagePreview.js'
+import { startAutoBackup } from '../services/campus/autoSync.js'
 import { HistorySheet } from '../components/history/HistorySheet.js'
 import styles from './App.module.css'
 
@@ -76,6 +77,9 @@ export const App = () => {
   useEffect(() => {
     void initChat()
   }, [])
+
+  // U 盘无感备份：对话后静默写入；本机无历史时自动恢复（没有 U 盘时完全静默）
+  useEffect(() => startAutoBackup(), [])
 
   // 公开版 exe 不内置 Key：首次使用发现未配置时，直接打开设置让用户填写
   useEffect(() => {
