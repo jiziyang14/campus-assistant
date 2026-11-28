@@ -27,6 +27,7 @@ import { closeMobileSider } from '../components/sider/mobileSiderState.js'
 import { MobileSider, Sider } from '../components/sider/Sider.js'
 import { CampusQuickPanel } from '../components/campus/CampusQuickPanel.js'
 import { ImagePreview } from '../components/files/ImagePreview.js'
+import { HistorySheet } from '../components/history/HistorySheet.js'
 import styles from './App.module.css'
 
 export const App = () => {
@@ -159,6 +160,7 @@ export const App = () => {
             )}
           </div>
         </main>
+        <HistorySheet />
         <SearchPanel />
       </div>
       <SettingsDialog />

@@ -148,7 +148,7 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
       <div className={styles.listWrap}>
         <div
           ref={listRef}
-          className={clsx(styles.list, dragging && styles.listDragging)}
+          className={clsx(styles.list, dragging && styles.listDragging, showJump && styles.listJumping)}
           onScroll={updateJump}
           onPointerDown={startDrag}
           onPointerMove={moveDrag}
@@ -179,12 +179,14 @@ export const Sider = ({ mobile = false }: { mobile?: boolean }) => {
           ))}
         </div>
         {showJump ? (
-          <button type="button" className={styles.jumpLatest} onClick={jumpToLatest}>
-            <span className={styles.jumpIcon}>
-              <IconChevronDownOutline14 />
-            </span>
-            {t('sidebarJumpLatest')}
-          </button>
+          <div className={styles.jumpBar}>
+            <button type="button" className={styles.jumpLatest} onClick={jumpToLatest}>
+              <span className={styles.jumpIcon}>
+                <IconChevronDownOutline14 />
+              </span>
+              {t('sidebarJumpLatest')}
+            </button>
+          </div>
         ) : null}
       </div>
       <div className={styles.bottom}>

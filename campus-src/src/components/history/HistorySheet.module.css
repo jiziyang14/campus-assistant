@@ -1,0 +1,143 @@
+/* 顶部下拉手柄：日常低调，悬停时明显一些 */
+.pullZone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  height: 18px;
+  padding-top: 4px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.pullHandle {
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-label-dimmed);
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.pullZone:hover .pullHandle {
+  opacity: 0.9;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: #000;
+}
+
+.sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0 0 18px 18px;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.sheetDragging {
+  transition: none;
+}
+
+.sheetSettling {
+  transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.sheetHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px 8px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.sheetHeader:active {
+  cursor: grabbing;
+}
+
+.sheetTitle {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sheetHint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.sheetList {
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.groupLabel {
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+  font-weight: 500;
+}
+
+.rowTitle {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.empty {
+  padding: 24px 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
