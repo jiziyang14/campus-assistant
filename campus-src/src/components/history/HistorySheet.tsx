@@ -12,13 +12,16 @@ const sheetHeight = () => Math.min(window.innerHeight * 0.55, 560)
 const OPEN_RATIO = 0.32
 /** 越界拖拽的阻尼系数 */
 const OVERSHOOT = 0.15
-/** 向下拖过该距离才认定为下拉，避免误触和抢走点击 */
+/** 向上划动超过该距离才认定为上滑，避免误触和抢走点击 */
 const PULL_THRESHOLD = 22
+/** 从聊天区底部这段高度起手，避免影响正常滚动和阅读 */
+const BOTTOM_TRIGGER_ZONE = 160
 
 /**
- * 顶部下拉的「最近会话」面板：
- * 鼠标在聊天区任意位置按住往下拖，面板带阻尼跟随，松手后吸附到打开或关闭；
- * 滚轮、触屏滚动不受影响（触屏不参与该手势）。标题栏也能拖动，点空白或 Esc 收起。
+ * 底部上滑的「最近会话」面板：
+ * 在聊天区底部按住往上滑，面板从下方带阻尼升起，松手后吸附到打开或关闭；
+ * 面板顶部的拖动条可以再上下调整，点空白或 Esc 关闭。
+ * 列表与左侧栏使用同一套分组和排序，切换会话后侧栏同步高亮。
  */
 export const HistorySheet = () => {
   const t = useTranslate()
@@ -53,24 +56,28 @@ export const HistorySheet = () => {
     settleTimer.current = window.setTimeout(() => setSettling(false), 240)
   }
 
-  // 鼠标在聊天区任意位置按住往下拖即可拉开面板；滚轮和触屏滚动不受影响
+  // 聊天区底部按住往上滑即可拉起面板；滚轮和触屏滚动不受影响
   useEffect(() => {
     if (isMobile) {
       return
     }
-    const canPullFrom = (target: EventTarget | null) => {
+    const canStartFrom = (target: EventTarget | null, clientY: number) => {
       if (!(target instanceof Element)) {
         return false
       }
       if (sheetRef.current?.contains(target)) {
         return false
       }
-      // 只在聊天区起手，侧栏拖拽不受影响
-      if (!target.closest('[data-history-pull]')) {
+      const main = target.closest('[data-history-pull]')
+      if (!(main instanceof HTMLElement)) {
         return false
       }
-      // 输入框里拖拽是选择文字，不能抢
-      return !target.closest('input, textarea, select, [contenteditable="true"]')
+      // 只在聊天区底部起手，上面区域留给滚动和阅读
+      if (clientY < main.getBoundingClientRect().bottom - BOTTOM_TRIGGER_ZONE) {
+        return false
+      }
+      // 输入框、按钮、链接上不抢手势
+      return !target.closest('input, textarea, select, button, a, [contenteditable="true"]')
     }
 
     let gesture: { startY: number; startX: number; active: boolean } | null = null
@@ -79,7 +86,7 @@ export const HistorySheet = () => {
       if (event.pointerType !== 'mouse' || event.button !== 0 || offsetRef.current > 0) {
         return
       }
-      if (!canPullFrom(event.target)) {
+      if (!canStartFrom(event.target, event.clientY)) {
         return
       }
       gesture = { startY: event.clientY, startX: event.clientX, active: false }
@@ -89,10 +96,10 @@ export const HistorySheet = () => {
       if (!gesture) {
         return
       }
-      const dy = event.clientY - gesture.startY
+      const dy = gesture.startY - event.clientY
       const dx = event.clientX - gesture.startX
       if (!gesture.active) {
-        // 只认向下的纵向拖动，避免和横向选择、普通点击打架
+        // 只认向上的纵向滑动，避免和横向选择、普通点击打架
         if (dy < PULL_THRESHOLD || dy < Math.abs(dx) * 1.3) {
           return
         }
@@ -167,12 +174,12 @@ export const HistorySheet = () => {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [offset])
 
-  // 切换会话后收起面板
+  // 切换会话后收起面板，左侧栏会同步高亮当前会话
   useEffect(() => {
     updateOffset(0)
   }, [activeId])
 
-  // 面板打开后，标题栏也能上下拖动
+  // 面板顶部拖动条：往上推可展开，往下拉可收起
   const beginHeaderDrag = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) {
       return
@@ -190,7 +197,7 @@ export const HistorySheet = () => {
       return
     }
     const max = sheetHeight()
-    let next = start.from + (event.clientY - start.y)
+    let next = start.from - (event.clientY - start.y)
     if (next < 0) {
       next *= OVERSHOOT
     } else if (next > max) {
@@ -217,16 +224,13 @@ export const HistorySheet = () => {
   const progress = Math.min(1, offset / max)
   const groups = open ? groupSessions(sessions, Date.now(), t) : []
 
-  // 移动端已有抽屉，不叠加顶部下拉
+  // 移动端已有抽屉，不叠加底部上滑
   if (isMobile) {
     return null
   }
 
   return (
     <>
-      <div className={styles.pullZone} aria-hidden="true">
-        <span className={styles.pullHandle} />
-      </div>
       {open ? (
         <div
           className={styles.backdrop}
@@ -243,7 +247,7 @@ export const HistorySheet = () => {
         )}
         style={{
           height: max,
-          transform: `translateY(${offset - max}px)`,
+          transform: `translateY(${max - offset}px)`,
           visibility: open || settling ? 'visible' : 'hidden',
         }}
         aria-hidden={!open}
@@ -255,8 +259,11 @@ export const HistorySheet = () => {
           onPointerUp={endHeaderDrag}
           onPointerCancel={endHeaderDrag}
         >
-          <span className={styles.sheetTitle}>{t('historySheetTitle')}</span>
-          <span className={styles.sheetHint}>{t('historySheetHint')}</span>
+          <span className={styles.grabber} />
+          <div className={styles.headerRow}>
+            <span className={styles.sheetTitle}>{t('historySheetTitle')}</span>
+            <span className={styles.sheetHint}>{t('historySheetHint')}</span>
+          </div>
         </div>
         <div className={styles.sheetList}>
           {groups.length === 0 ? (

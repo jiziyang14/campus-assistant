@@ -170,7 +170,7 @@ export const en = {
   scrollToLatest: 'Back to latest',
   sidebarJumpLatest: 'Latest chat',
   historySheetTitle: 'Recent chats',
-  historySheetHint: 'Drag down in chat · tap outside to close',
+  historySheetHint: 'Swipe up from bottom · drag down or tap outside',
   historySheetEmpty: 'No chats yet',
   usageContextLabel: 'Context used',
   usageContextValue: '{used} / {total}',
