@@ -84,9 +84,9 @@ export const useVoiceInput = (onText: (text: string) => void) => {
     setStatus('transcribing')
     try {
       browser?.stop()
-      // 给浏览器一点时间把最后一句定稿，避免末尾几个字丢失
+      // 给浏览器一点时间把最后一句定稿，避免末尾几个字丢失或误触发整段转写
       if (browser) {
-        await delay(300)
+        await delay(600)
       }
       if (operationRef.current !== operation) {
         return
@@ -112,6 +112,10 @@ export const useVoiceInput = (onText: (text: string) => void) => {
         return
       }
       if (text.trim()) {
+        // 整段转写期间浏览器如果补出了定稿文字，说明已经识别成功，丢弃转写结果避免重复
+        if (committedRef.current.trim()) {
+          return
+        }
         onTextRef.current(text.trim())
       } else {
         showToast({ key: 'voiceInputEmpty' })
