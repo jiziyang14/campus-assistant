@@ -43,5 +43,13 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # 品牌 Logo / 图标不入公开仓库，构建前用占位文件补齐，避免 CI 因缺少私有素材失败
+      - name: Stub private brand assets
+        run: |
+          mkdir -p src/assets
+          printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#ff6b35"/></svg>' > src/assets/logo-small.svg
+          printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#ff6b35"/></svg>' > src/assets/apple-touch-icon.png
+          : > src/assets/favicon.ico
+
       - name: Build
         run: pnpm build

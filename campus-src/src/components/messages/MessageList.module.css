@@ -52,8 +52,8 @@
 
 .scrollButton {
   position: absolute;
-  right: 24px;
   bottom: 132px;
+  left: 50%;
   z-index: 20;
   display: inline-flex;
   align-items: center;
@@ -69,6 +69,7 @@
   line-height: 20px;
   white-space: nowrap;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateX(-50%);
   cursor: pointer;
   user-select: none;
 }
@@ -84,7 +85,6 @@
   }
 
   .scrollButton {
-    right: 12px;
     bottom: 104px;
     height: 36px;
     padding: 0 14px;
